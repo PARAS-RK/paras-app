@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import { Award, Check, Leaf, Lock, Users } from 'lucide-react';
-import { cn } from '../../../lib/utils';
-import { useAksiState, addPoints } from '../aksi/aksiStore';
-import { focusRing, fontWrap, ProgressBar } from '../aksi/AksiShared';
+import { cn } from '../lib/utils';
+import { useAksiState, addPoints } from '../lib/aksiStore';
+import { focusRing, fontWrap, ProgressBar } from '../components/AksiShared';
 
 /* Three badges unlocked by total points, in order. */
 export const BADGES = [

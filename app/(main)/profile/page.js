@@ -3,13 +3,12 @@
 import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Mail, Phone, MapPin, ShieldCheck, ChevronRight, ChevronDown, LogOut, Bell, Lock, FileText, Leaf, Award, Flame, Pencil, HelpCircle, EyeOff, Check, UserCheck, Trash2, X, Loader2, Camera } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { currentUser, displayName, addressFull, areaLabel } from '@/lib/currentUser';
-import { useReportContext } from '@/context/ReportContext';
-import { useAksiState, toggleHideName } from '@/app/(main)/aksi/aksiStore';
-import { BadgeCollectionCard } from '@/app/(main)/badges/Badges';
-import { createClient } from '@/lib/supabase/client';
+import { Mail, Phone, MapPin, ShieldCheck, ChevronRight, ChevronDown, LogOut, Bell, Lock, FileText, Leaf, Award, Flame, Pencil, HelpCircle, EyeOff, Check, Trash2, X, Loader2, Camera } from 'lucide-react';
+import { cn } from '../../../lib/utils';
+import { useReportContext } from '../../../context/ReportContext';
+import { useAksiState, toggleHideName } from '../../../lib/aksiStore';
+import { BadgeCollectionCard } from '../../../components/Badges';
+import { createClient } from '../../../lib/supabase/client';
 
 const card = 'rounded-2xl border border-border bg-white shadow-sm';
 const sectionLabel = 'px-5 pt-5 pb-2 text-xs font-black uppercase tracking-widest text-muted-foreground';
@@ -86,7 +85,7 @@ function EditProfileModal({ isOpen, onClose, currentProfile, onSuccess }) {
         uploadedAvatarUrl = publicUrlData.publicUrl;
       }
 
-      // 2. Update metadata profile & tabel profiles di Supabase
+      // 2. Update tabel profiles di Supabase
       const { error: updateProfileError } = await supabase
         .from('profiles')
         .update({
@@ -122,7 +121,7 @@ function EditProfileModal({ isOpen, onClose, currentProfile, onSuccess }) {
   };
 
   const getInitials = (text) => {
-    if (!text) return 'SW';
+    if (!text) return 'WJ';
     return text.split(' ').filter(Boolean).map((n) => n[0]).join('').slice(0, 2).toUpperCase();
   };
 
@@ -284,12 +283,21 @@ function PasswordForm({ onDone }) {
   return (
     <form
       className="space-y-3 border-t border-border bg-muted/30 px-5 py-4"
-      onSubmit={(e) => {
+      onSubmit={async (e) => {
         e.preventDefault();
         if (!ok) return;
-        setMsg('Kata sandi berhasil diperbarui.');
-        setF({ old: '', next: '', confirm: '' });
-        setTimeout(onDone, 1200);
+        
+        try {
+          const supabase = createClient();
+          const { error } = await supabase.auth.updateUser({ password: f.next });
+          if (error) throw error;
+
+          setMsg('Kata sandi berhasil diperbarui.');
+          setF({ old: '', next: '', confirm: '' });
+          setTimeout(onDone, 1200);
+        } catch (err) {
+          alert('Gagal memperbarui kata sandi: ' + err.message);
+        }
       }}
     >
       {[
@@ -324,16 +332,20 @@ export default function Profile() {
   const router = useRouter();
   const [hash, setHash] = useState('');
   const { reports } = useReportContext();
+  const [loadingUser, setLoadingUser] = useState(true);
 
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [profileData, setProfileData] = useState({
-    full_name: displayName,
-    email: currentUser.email,
-    phone: currentUser.phone,
+    full_name: 'Warga PARAS',
+    email: '',
+    phone: '',
     avatar_url: '',
-    kelurahan: currentUser.kelurahan || '',
-    kecamatan: currentUser.kecamatan || '',
-    city: currentUser.city || '',
+    kelurahan: '',
+    kecamatan: '',
+    city: '',
+    pkkStatus: 'verified',
+    pkkRole: 'PKK',
+    joinedDate: 'September 2024'
   });
 
   // Fetch profil dari Supabase saat load awal
@@ -341,35 +353,49 @@ export default function Profile() {
     const fetchProfile = async () => {
       try {
         const supabase = createClient();
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-        if (user) {
-          const { data, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', user.id)
-            .single();
+        if (authError || !user) {
+          router.push('/login'); // Redirect jika belum login
+          return;
+        }
 
-          if (data && !error) {
-            setProfileData((prev) => ({
-              ...prev,
-              full_name: data.full_name || prev.full_name,
-              phone: data.phone || prev.phone,
-              email: user.email || prev.email,
-              avatar_url: data.avatar_url || '',
-              kelurahan: data.kelurahan || prev.kelurahan,
-              kecamatan: data.kecamatan || prev.kecamatan,
-              city: data.city || prev.city,
-            }));
-          }
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (data && !error) {
+          setProfileData({
+            full_name: data.full_name || user.user_metadata?.full_name || 'Warga PARAS',
+            email: user.email || '',
+            phone: data.phone || '-',
+            avatar_url: data.avatar_url || '',
+            kelurahan: data.kelurahan || 'Kel. Kebayoran Baru',
+            kecamatan: data.kecamatan || 'Kec. Kebayoran Baru',
+            city: data.city || 'Jakarta Selatan',
+            pkkStatus: data.pkk_status || 'verified',
+            pkkRole: data.pkk_role || 'PKK',
+            joinedDate: data.created_at ? new Date(data.created_at).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }) : 'September 2024'
+          });
+        } else {
+          // Jika row profiles belum ada, fallback ke data auth
+          setProfileData((prev) => ({
+            ...prev,
+            email: user.email || '',
+            full_name: user.user_metadata?.full_name || 'Warga PARAS',
+          }));
         }
       } catch (err) {
         console.error('Gagal mengambil data profil:', err);
+      } finally {
+        setLoadingUser(false);
       }
     };
 
     fetchProfile();
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     setHash(window.location.hash);
@@ -389,9 +415,11 @@ export default function Profile() {
   const [openPwd, setOpenPwd] = useState(false);
   const [openNotif, setOpenNotif] = useState(false);
 
-  const handleDeleteAccount = () => {
+  const handleDeleteAccount = async () => {
     const confirmed = window.confirm('Apakah Anda yakin ingin menghapus akun? Tindakan ini tidak dapat dibatalkan.');
     if (confirmed) {
+      const supabase = createClient();
+      await supabase.auth.signOut();
       localStorage.removeItem('paras-authenticated');
       router.push('/');
     }
@@ -409,14 +437,14 @@ export default function Profile() {
   ];
 
   const notifItems = [
-    { k: 'cuaca', t: 'Peringatan cuaca & bencana', s: `Untuk ${areaLabel}` },
+    { k: 'cuaca', t: 'Peringatan cuaca & bencana', s: `Untuk ${profileData.kelurahan}, ${profileData.city}` },
     { k: 'laporan', t: 'Perkembangan laporan', s: 'Saat status laporan berubah' },
     { k: 'aksi', t: 'Aksi Komunitas', s: 'Aksi baru & verifikasi bukti' },
     { k: 'wa', t: 'Kirim juga lewat WhatsApp', s: profileData.phone },
   ];
 
   const getInitials = (name) => {
-    if (!name) return 'SW';
+    if (!name) return 'WJ';
     return name
       .split(' ')
       .filter(Boolean)
@@ -425,6 +453,14 @@ export default function Profile() {
       .slice(0, 2)
       .toUpperCase();
   };
+
+  if (loadingUser) {
+    return (
+      <div className="flex h-[70vh] w-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-brand" />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-6 lg:px-10 lg:py-8">
@@ -458,16 +494,16 @@ export default function Profile() {
                 </button>
               </div>
               <p className="mt-3 text-xl font-black text-foreground">{profileData.full_name}</p>
-              {currentUser.pkkStatus === 'verified' && (
+              {profileData.pkkStatus === 'verified' && (
                 <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-brand-light px-2.5 py-1 text-xs font-bold text-brand">
-                  <ShieldCheck className="h-3.5 w-3.5" aria-hidden /> {currentUser.pkkRole} Terverifikasi
+                  <ShieldCheck className="h-3.5 w-3.5" aria-hidden /> {profileData.pkkRole} Terverifikasi
                 </span>
               )}
               <p className="mt-3 flex items-start gap-1.5 text-sm text-muted-foreground">
                 <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-brand" aria-hidden />
-                {addressFull}
+                {profileData.kelurahan}, {profileData.kecamatan}, {profileData.city}
               </p>
-              <p className="mt-1 text-xs text-muted-foreground">Bergabung sejak {currentUser.joinedDate}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Bergabung sejak {profileData.joinedDate}</p>
             </div>
             <div className="border-t border-border">
               <Row icon={Mail} title="Email" sub={profileData.email} />

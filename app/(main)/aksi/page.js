@@ -6,9 +6,9 @@ import Link from 'next/link';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { Flame, Leaf, CheckCircle2, MapPin, Users, Inbox, Info, Check } from 'lucide-react';
 import { cn } from '../../../lib/utils';
-import { useAksiState, joinAksi, pct, ranking, toggleHideName, initialsOf, USER_AREA } from './aksiStore';
-import { BadgeIcon, BadgeProgressCard, BadgeUnlockedDialog, badgeForPoints, badgeProgress, demoUnlockBadge } from '../badges/Badges';
-import { StatusBadge, CategoryArt, ProgressBar, JoinModal, ToastHost, showToast, Sheet, btnPrimary, btnSecondary, focusRing, fontWrap } from './AksiShared';
+import { useAksiState, joinAksi, pct, ranking, toggleHideName, initialsOf, USER_AREA } from '../../../lib/aksiStore';
+import { BadgeIcon, BadgeProgressCard, BadgeUnlockedDialog, badgeForPoints, badgeProgress, demoUnlockBadge } from '../../../components/Badges';
+import { StatusBadge, CategoryArt, ProgressBar, JoinModal, ToastHost, showToast, Sheet, btnPrimary, btnSecondary, focusRing, fontWrap } from '../../../components/AksiShared';
 
 function AksiListContent() {
   const s = useAksiState();

@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import Hero from "@/components/landing/Hero";
-import Features from "@/components/landing/Features";
-import About from "@/components/landing/About";
-import CTA from "@/components/landing/CTA";
-import ChatContainer from "@/components/landing/ChatContainer";
+import { createClient } from "../../lib/supabase/server";
+import Hero from "../../components/landing/Hero";
+import Features from "../../components/landing/Features";
+import About from "../../components/landing/About";
+import CTA from "../../components/landing/CTA";
+import ChatContainer from "../../components/landing/ChatContainer";
 
 export default async function LandingPage() {
   const supabase = await createClient();

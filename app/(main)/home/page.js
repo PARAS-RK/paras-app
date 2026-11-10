@@ -1,25 +1,68 @@
 'use client';
-import Link from 'next/link';
-import { AlertTriangle, ArrowRight, Award, ChevronRight, CloudRain, CloudLightning, FileText, Leaf, MapPin, MessageCircle } from 'lucide-react';
-// import { displayName, areaFull } from '../lib/currentUser';
-import { useReportContext } from '@/context/ReportContext';
-import { useAksiState } from '../store/aksiStore';
 
-import { Card, CardContent } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { AlertTriangle, ArrowRight, Award, ChevronRight, CloudRain, CloudLightning, FileText, Leaf, MapPin, MessageCircle, Loader2 } from 'lucide-react';
+import { useReportContext } from '../../../context/ReportContext';
+import { useAksiState } from '../store/aksiStore';
+import { createClient } from '../../../lib/supabase/client';
+
+import { Card, CardContent } from '../../../components/ui/card';
+import { Progress } from '../../../components/ui/progress';
 
 export default function Home() {
-  // Mock data sementara agar desain bisa terlihat sebelum API siap
-  const displayName = 'Ibu Sari Wulandari';
-  const areaFull = 'Kel. Kebayoran Baru, Jakarta Selatan';
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [profileData, setProfileData] = useState({
+    displayName: 'Warga PARAS',
+    areaFull: 'Kel. Kebayoran Baru, Jakarta Selatan',
+  });
 
-  // const { reports } = useReportContext();
+  // Fetch profil asli dari Supabase saat load awal
+  useEffect(() => {
+    const fetchHomeData = async () => {
+      try {
+        const supabase = createClient();
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+        if (authError || !user) {
+          router.push('/login');
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (data && !error) {
+          const kelurahan = data.kelurahan || 'Kel. Kebayoran Baru';
+          const city = data.city || 'Jakarta Selatan';
+          setProfileData({
+            displayName: data.full_name || user.user_metadata?.full_name || 'Warga PARAS',
+            areaFull: `${kelurahan}, ${city}`,
+          });
+        } else {
+          setProfileData({
+            displayName: user.user_metadata?.full_name || 'Warga PARAS',
+            areaFull: 'Kel. Kebayoran Baru, Jakarta Selatan',
+          });
+        }
+      } catch (err) {
+        console.error('Gagal memuat data beranda:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchHomeData();
+  }, [router]);
+
   const aksi = useAksiState();
-  // const mine = reports.filter((r) => r.reporter === displayName);
-  // const processing = mine.filter((r) => r.status === 'pending' || r.status === 'in_progress').length;
   const current = aksi.aksi.find((a) => a.joined && a.status === 'aktif');
 
-  // Mock persentase (Fungsi pct dari store)
   const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
 
   const tiles = [
@@ -27,7 +70,7 @@ export default function Home() {
       ? {
           to: `/aksi/${current.id}`,
           icon: Leaf,
-          tone: 'text-[#159038] bg-[#159038]/10', // Eco Emerald Green
+          tone: 'text-[#159038] bg-[#159038]/10',
           label: 'Aksi Saya',
           value: `${pct(current.achieved, current.target)}%`,
           sub: current.title,
@@ -45,11 +88,9 @@ export default function Home() {
     {
       to: '/reports',
       icon: FileText,
-      tone: 'text-[#E6008A] bg-[#E6008A]/10', // Magenta Pink
+      tone: 'text-[#E6008A] bg-[#E6008A]/10',
       label: 'Laporan Saya',
-      // value: `${mine.length}`,
       value: '2',
-      // sub: `${processing} sedang diproses`
       sub: '2 sedang diproses',
     },
     {
@@ -70,20 +111,27 @@ export default function Home() {
     },
   ];
 
+  if (loading) {
+    return (
+      <div className="flex h-[70vh] w-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-[#159038]" />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col min-h-screen bg-gray-50/30 font-sans pb-12">
       {/* 1. Header Section (Eco Emerald Green) */}
       <section className="relative overflow-hidden bg-[#159038] px-5 py-10 text-white lg:px-10 lg:py-14">
-        {/* Dekorasi lingkaran background */}
         <div className="absolute -right-20 -top-20 h-80 w-80 rounded-full bg-white/10 blur-2xl" />
         <div className="absolute -bottom-24 left-1/4 h-64 w-64 rounded-full bg-white/10 blur-xl" />
 
         <div className="relative mx-auto max-w-5xl">
           <p className="text-sm font-medium text-white/80">Selamat datang kembali,</p>
-          <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl">{displayName}</h1>
+          <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl">{profileData.displayName}</h1>
           <div className="mt-5 flex items-center gap-2 text-sm text-white/90">
             <MapPin className="h-4 w-4" />
-            <span>{areaFull}</span>
+            <span>{profileData.areaFull}</span>
           </div>
         </div>
       </section>
@@ -132,9 +180,6 @@ export default function Home() {
               <Card className="h-full transition-all hover:shadow-md border-gray-200/60 hover:border-gray-300">
                 <CardContent className="flex flex-col p-5">
                   <div className="flex items-center justify-between">
-                    {/* <span className={cn('flex h-10 w-10 items-center justify-center rounded-xl', t.tone)}>
-                      <t.icon className="h-5 w-5" aria-hidden />
-                    </span> */}
                     <ChevronRight className="h-4 w-4 text-gray-400 transition-transform group-hover:translate-x-1" aria-hidden />
                   </div>
 
@@ -144,7 +189,6 @@ export default function Home() {
                     <p className="truncate text-xs font-medium text-gray-500 mt-1">{t.sub}</p>
                   </div>
 
-                  {/* Progress Bar Khusus Aksi */}
                   {'bar' in t && t.bar !== undefined && (
                     <div className="mt-4">
                       <Progress value={t.bar} className="h-2 bg-gray-100" indicatorClassName={t.barColor} />

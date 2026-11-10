@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { ArrowRight, Leaf, Sparkles } from "lucide-react";
 
-import { cn } from "@/lib/utils";
-import { buttonVariants } from "@/components/ui/button";
+import { cn } from "../../lib/utils";
+import { buttonVariants } from "../../components/ui/button";
 
 export default function Hero() {
   return (

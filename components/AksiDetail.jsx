@@ -4,8 +4,8 @@ import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Share2, Phone, Link2, ShieldCheck, MapPin, Clock, Calendar, Target, Camera, Image as ImageIcon, CheckCircle2, Upload, Lock, Users, ListChecks, Trophy, Leaf, Save, XCircle } from 'lucide-react';
-import { cn } from '../../../lib/utils';
-import { useAksi, joinAksi, setLastStep, markSafetyRead, saveChecklist, submitOutcome, markComplete, myTaskStats, pct, waShareUrl } from './aksiStore';
+import { cn } from '../lib/utils';
+import { useAksi, joinAksi, setLastStep, markSafetyRead, saveChecklist, submitOutcome, markComplete, myTaskStats, pct, waShareUrl } from '../lib/aksiStore';
 import { StatusBadge, Avatar, ProgressBar, JoinModal, ToastHost, showToast, CategoryArt, btnPrimary, btnSecondary, focusRing, fontWrap } from './AksiShared';
 const STEPS = ['Ringkasan', 'Panduan', 'Checklist & Hasil', 'Progres'];
 

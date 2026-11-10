@@ -7,7 +7,7 @@ import {
   Activity, AlertTriangle, Check, ChevronDown, ChevronUp, Clock, Cloud, CloudFog,
   CloudLightning, CloudRain, CloudSun, Copy, Droplets, Globe, Info, ShieldCheck, Sun,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn } from '../../../lib/utils';
 
 /*
   Halaman ini HANYA menampilkan data yang diberikan lewat prop `data`.

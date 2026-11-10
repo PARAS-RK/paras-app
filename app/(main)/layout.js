@@ -1,6 +1,6 @@
-import Navbar from '@/components/Navbar';
-import FloatingLaporButton from '@/components/FloatingLaporButton';
-import { ReportProvider } from '@/context/ReportContext';
+import Navbar from '../../components/Navbar';
+import FloatingLaporButton from '../../components/FloatingLaporButton';
+import { ReportProvider } from '../../context/ReportContext';
 
 export default function MainLayout({ children }) {
   return (

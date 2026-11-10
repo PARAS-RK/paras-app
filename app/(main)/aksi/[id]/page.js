@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import AksiDetail from '../AksiDetail';
+import AksiDetail from '../../../../components/AksiDetail';
 
 async function AksiDetailWrapper({ params }) {
   const { id } = await params;

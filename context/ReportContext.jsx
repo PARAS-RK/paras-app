@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useContext, createContext } from 'react';
-import { INITIAL_REPORTS } from '@/lib/reportStore';
+import { INITIAL_REPORTS } from '../lib/reportStore';
 
 export const ReportContext = createContext(null);
 

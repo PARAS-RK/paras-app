@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { cn } from "@/lib/utils";
+import { cn } from "../../lib/utils";
 import { features } from "./data";
 
 export default function Features() {
