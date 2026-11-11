@@ -16,26 +16,138 @@ const sectionLabel = 'px-5 pt-5 pb-2 text-xs font-black uppercase tracking-wides
 /* Modal Ubah Profil Lengkap */
 function EditProfileModal({ isOpen, onClose, currentProfile, onSuccess }) {
   const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [email, setEmail] = useState('');
+  
   const [avatarUrl, setAvatarUrl] = useState('');
   const [avatarFile, setAvatarFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState('');
+
+  // Lokasi Domisili States
+  const [provinces, setProvinces] = useState([]);
+  const [regencies, setRegencies] = useState([]);
+  const [districts, setDistricts] = useState([]);
+  const [villages, setVillages] = useState([]);
+
+  const [selectedProvinceId, setSelectedProvinceId] = useState('');
+  const [selectedRegencyId, setSelectedRegencyId] = useState('');
+  const [selectedDistrictId, setSelectedDistrictId] = useState('');
+  const [selectedVillageId, setSelectedVillageId] = useState('');
+  
+  const [provinceName, setProvinceName] = useState('');
+  const [cityName, setCityName] = useState('');
+  const [kecamatan, setKecamatan] = useState('');
+  const [kelurahan, setKelurahan] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const fileInputRef = useRef(null);
 
+  // 1. Fetch provinces on mount
   useEffect(() => {
-    if (currentProfile) {
+    fetch('https://www.emsifa.com/api-wilayah-indonesia/api/provinces.json')
+      .then((res) => res.json())
+      .then((data) => setProvinces(data))
+      .catch((err) => console.error('Gagal memuat provinsi:', err));
+  }, []);
+
+  // 2. Fetch regencies when province changes
+  useEffect(() => {
+    if (selectedProvinceId) {
+      fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/regencies/${selectedProvinceId}.json`)
+        .then((res) => res.json())
+        .then((data) => setRegencies(data))
+        .catch((err) => console.error('Gagal memuat kota/kabupaten:', err));
+    } else {
+      setRegencies([]);
+    }
+  }, [selectedProvinceId]);
+
+  // 3. Fetch districts when regency changes
+  useEffect(() => {
+    if (selectedRegencyId) {
+      fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/districts/${selectedRegencyId}.json`)
+        .then((res) => res.json())
+        .then((data) => setDistricts(data))
+        .catch((err) => console.error('Gagal memuat kecamatan:', err));
+    } else {
+      setDistricts([]);
+    }
+  }, [selectedRegencyId]);
+
+  // 4. Fetch villages when district changes
+  useEffect(() => {
+    if (selectedDistrictId) {
+      fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/villages/${selectedDistrictId}.json`)
+        .then((res) => res.json())
+        .then((data) => setVillages(data))
+        .catch((err) => console.error('Gagal memuat kelurahan:', err));
+    } else {
+      setVillages([]);
+    }
+  }, [selectedDistrictId]);
+
+  // Set initial form values & auto-match region names when modal opens
+  useEffect(() => {
+    if (currentProfile && isOpen) {
       setName(currentProfile.full_name || '');
-      setPhone(currentProfile.phone || '');
+      setPhoneNumber(currentProfile.phone || currentProfile.phone_number || '');
       setEmail(currentProfile.email || '');
       setAvatarUrl(currentProfile.avatar_url || '');
       setPreviewUrl(currentProfile.avatar_url || '');
       setAvatarFile(null);
+      
+      setCityName(currentProfile.city || '');
+      setKecamatan(currentProfile.kecamatan || '');
+      setKelurahan(currentProfile.kelurahan || '');
+
+      if (currentProfile.province && provinces.length > 0) {
+        const foundProv = provinces.find(
+          (p) => p.name.toLowerCase() === currentProfile.province.toLowerCase()
+        );
+        if (foundProv) {
+          setSelectedProvinceId(foundProv.id);
+          setProvinceName(foundProv.name);
+        }
+      }
     }
-  }, [currentProfile]);
+  }, [currentProfile, isOpen, provinces]);
+
+  useEffect(() => {
+    if (currentProfile?.city && regencies.length > 0) {
+      const foundReg = regencies.find(
+        (r) => r.name.toLowerCase() === currentProfile.city.toLowerCase()
+      );
+      if (foundReg) {
+        setSelectedRegencyId(foundReg.id);
+        setCityName(foundReg.name);
+      }
+    }
+  }, [regencies, currentProfile]);
+
+  useEffect(() => {
+    if (currentProfile?.kecamatan && districts.length > 0) {
+      const foundDist = districts.find(
+        (d) => d.name.toLowerCase() === currentProfile.kecamatan.toLowerCase()
+      );
+      if (foundDist) {
+        setSelectedDistrictId(foundDist.id);
+        setKecamatan(foundDist.name);
+      }
+    }
+  }, [districts, currentProfile]);
+
+  useEffect(() => {
+    if (currentProfile?.kelurahan && villages.length > 0) {
+      const foundVil = villages.find(
+        (v) => v.name.toLowerCase() === currentProfile.kelurahan.toLowerCase()
+      );
+      if (foundVil) {
+        setSelectedVillageId(foundVil.id);
+        setKelurahan(foundVil.name);
+      }
+    }
+  }, [villages, currentProfile]);
 
   if (!isOpen) return null;
 
@@ -67,7 +179,6 @@ function EditProfileModal({ isOpen, onClose, currentProfile, onSuccess }) {
 
       let uploadedAvatarUrl = avatarUrl;
 
-      // 1. Upload foto ke Supabase Storage (bucket: avatars) jika ada file baru dipilih
       if (avatarFile) {
         const fileExt = avatarFile.name.split('.').pop();
         const filePath = `${user.id}/${Date.now()}.${fileExt}`;
@@ -85,31 +196,87 @@ function EditProfileModal({ isOpen, onClose, currentProfile, onSuccess }) {
         uploadedAvatarUrl = publicUrlData.publicUrl;
       }
 
-      // 2. Update tabel profiles di Supabase
+      let targetRegionId = null;
+      if (selectedVillageId) {
+        let { data: existingRegion } = await supabase
+          .from('regions')
+          .select('region_id')
+          .eq('subdistrict_code', selectedVillageId)
+          .maybeSingle();
+
+        if (!existingRegion && kelurahan) {
+          const { data: regionByName } = await supabase
+            .from('regions')
+            .select('region_id')
+            .eq('subdistrict', kelurahan)
+            .eq('city', cityName)
+            .maybeSingle();
+          existingRegion = regionByName;
+        }
+
+        if (existingRegion) {
+          targetRegionId = existingRegion.region_id;
+        } else {
+          const { data: newRegion, error: regError } = await supabase
+            .from('regions')
+            .insert({
+              province_code: selectedProvinceId,
+              province: provinceName,
+              city_code: selectedRegencyId,
+              city: cityName,
+              district_code: selectedDistrictId,
+              district: kecamatan,
+              subdistrict_code: selectedVillageId,
+              subdistrict: kelurahan,
+            })
+            .select('region_id')
+            .single();
+
+          if (regError) {
+            throw new Error('Gagal menyimpan wilayah baru: ' + regError.message);
+          }
+          if (newRegion) {
+            targetRegionId = newRegion.region_id;
+          }
+        }
+      }
+
+      const upsertPayload = {
+        user_id: user.id,
+        full_name: name,
+        phone_number: phoneNumber,
+        avatar_url: uploadedAvatarUrl,
+      };
+
+      if (targetRegionId) {
+        upsertPayload.region_id = parseInt(targetRegionId, 10);
+      }
+
       const { error: updateProfileError } = await supabase
         .from('profiles')
-        .update({
-          full_name: name,
-          phone: phone,
-          avatar_url: uploadedAvatarUrl,
-        })
-        .eq('id', user.id);
+        .upsert(upsertPayload, { onConflict: 'user_id' });
 
-      if (updateProfileError) throw updateProfileError;
+      if (updateProfileError) {
+        console.error('DETAIL ERROR SUPABASE:', updateProfileError);
+        throw new Error('Gagal menyimpan profil: ' + updateProfileError.message);
+      }
 
-      // 3. Update Email Auth jika user mengubah emailnya
       if (email !== currentProfile.email) {
         const { error: emailError } = await supabase.auth.updateUser({ email });
         if (emailError) throw emailError;
       }
 
-      // Callback sukses ke UI lokal
       if (onSuccess) {
         onSuccess({
           full_name: name,
-          phone: phone,
+          phone: phoneNumber,
+          phone_number: phoneNumber,
           email: email,
           avatar_url: uploadedAvatarUrl,
+          city: cityName,
+          kecamatan: kecamatan,
+          kelurahan: kelurahan,
+          province: provinceName,
         });
       }
       onClose();
@@ -138,7 +305,6 @@ function EditProfileModal({ isOpen, onClose, currentProfile, onSuccess }) {
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
           {errorMsg && <p className="rounded-xl bg-red-50 p-3 text-xs text-red-500">{errorMsg}</p>}
 
-          {/* Input Upload Foto Profil */}
           <div className="flex flex-col items-center justify-center space-y-2 py-2">
             <div className="relative">
               {previewUrl ? (
@@ -171,40 +337,135 @@ function EditProfileModal({ isOpen, onClose, currentProfile, onSuccess }) {
             <p className="text-[11px] text-muted-foreground">Format JPG/PNG, maks 2MB</p>
           </div>
 
-          {/* Nama Lengkap */}
           <div>
             <label className="mb-1.5 block text-xs font-bold text-foreground">Nama Lengkap</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              placeholder="Nama lengkap Anda"
               required
               className="w-full rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm outline-none focus:border-brand focus:bg-white"
             />
           </div>
 
-          {/* Email */}
           <div>
             <label className="mb-1.5 block text-xs font-bold text-foreground">Email</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              placeholder="email@contoh.com"
               required
               className="w-full rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm outline-none focus:border-brand focus:bg-white"
             />
           </div>
 
-          {/* Nomor HP */}
           <div>
             <label className="mb-1.5 block text-xs font-bold text-foreground">Nomor HP</label>
             <input
               type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              value={phoneNumber}
+              onChange={(e) => setPhoneNumber(e.target.value)}
+              placeholder="08xxxxxxxxxx"
               required
               className="w-full rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm outline-none focus:border-brand focus:bg-white"
             />
+          </div>
+
+          <div className="rounded-2xl border border-border bg-muted/20 p-4 space-y-3">
+            <h4 className="text-xs font-black uppercase tracking-widest text-foreground">Lokasi Domisili</h4>
+            
+            <div>
+              <label className="mb-1 block text-xs font-bold text-foreground">Provinsi</label>
+              <select
+                value={selectedProvinceId}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  setSelectedProvinceId(id);
+                  const found = provinces.find((p) => p.id === id);
+                  setProvinceName(found ? found.name : '');
+                  setSelectedRegencyId('');
+                  setCityName('');
+                  setSelectedDistrictId('');
+                  setKecamatan('');
+                  setSelectedVillageId('');
+                  setKelurahan('');
+                }}
+                className="w-full rounded-xl border border-border bg-white px-3 py-2.5 text-sm outline-none focus:border-brand"
+              >
+                <option value="">Pilih provinsi</option>
+                {provinces.map((prov) => (
+                  <option key={prov.id} value={prov.id}>{prov.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-bold text-foreground">Kota/Kabupaten</label>
+              <select
+                value={selectedRegencyId}
+                disabled={!selectedProvinceId}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  setSelectedRegencyId(id);
+                  const found = regencies.find((r) => r.id === id);
+                  setCityName(found ? found.name : '');
+                  setSelectedDistrictId('');
+                  setKecamatan('');
+                  setSelectedVillageId('');
+                  setKelurahan('');
+                }}
+                className="w-full rounded-xl border border-border bg-white px-3 py-2.5 text-sm outline-none focus:border-brand disabled:opacity-50"
+              >
+                <option value="">Pilih kota/kabupaten</option>
+                {regencies.map((reg) => (
+                  <option key={reg.id} value={reg.id}>{reg.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-bold text-foreground">Kecamatan</label>
+              <select
+                value={selectedDistrictId}
+                disabled={!selectedRegencyId}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  setSelectedDistrictId(id);
+                  const found = districts.find((d) => d.id === id);
+                  setKecamatan(found ? found.name : '');
+                  setSelectedVillageId('');
+                  setKelurahan('');
+                }}
+                className="w-full rounded-xl border border-border bg-white px-3 py-2.5 text-sm outline-none focus:border-brand disabled:opacity-50"
+              >
+                <option value="">Pilih kecamatan</option>
+                {districts.map((dist) => (
+                  <option key={dist.id} value={dist.id}>{dist.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-bold text-foreground">Kelurahan</label>
+              <select
+                value={selectedVillageId}
+                disabled={!selectedDistrictId}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  setSelectedVillageId(id);
+                  const found = villages.find((v) => v.id === id);
+                  setKelurahan(found ? found.name : '');
+                }}
+                className="w-full rounded-xl border border-border bg-white px-3 py-2.5 text-sm outline-none focus:border-brand disabled:opacity-50"
+              >
+                <option value="">Pilih kelurahan</option>
+                {villages.map((vil) => (
+                  <option key={vil.id} value={vil.id}>{vil.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="mt-6 flex justify-end gap-3 pt-2 border-t border-border">
@@ -339,16 +600,18 @@ export default function Profile() {
     full_name: 'Warga PARAS',
     email: '',
     phone: '',
+    phone_number: '',
     avatar_url: '',
     kelurahan: '',
     kecamatan: '',
     city: '',
+    province: '',
     pkkStatus: 'verified',
     pkkRole: 'PKK',
     joinedDate: 'September 2024'
   });
 
-  // Fetch profil dari Supabase saat load awal
+  // Fetch profil dari Supabase saat load awal dengan join ke tabel regions
   useEffect(() => {
     const fetchProfile = async () => {
       try {
@@ -356,31 +619,32 @@ export default function Profile() {
         const { data: { user }, error: authError } = await supabase.auth.getUser();
 
         if (authError || !user) {
-          router.push('/login'); // Redirect jika belum login
+          router.push('/login');
           return;
         }
 
         const { data, error } = await supabase
           .from('profiles')
-          .select('*')
-          .eq('id', user.id)
+          .select('*, regions(*)')
+          .eq('user_id', user.id)
           .single();
 
         if (data && !error) {
           setProfileData({
             full_name: data.full_name || user.user_metadata?.full_name || 'Warga PARAS',
             email: user.email || '',
-            phone: data.phone || '-',
+            phone: data.phone_number || '',
+            phone_number: data.phone_number || '',
             avatar_url: data.avatar_url || '',
-            kelurahan: data.kelurahan || 'Kel. Kebayoran Baru',
-            kecamatan: data.kecamatan || 'Kec. Kebayoran Baru',
-            city: data.city || 'Jakarta Selatan',
-            pkkStatus: data.pkk_status || 'verified',
-            pkkRole: data.pkk_role || 'PKK',
+            kelurahan: data.regions?.subdistrict || '',
+            kecamatan: data.regions?.district || '',
+            city: data.regions?.city || '',
+            province: data.regions?.province || '',
+            pkkStatus: data.account_status || 'verified',
+            pkkRole: data.account_category || 'PKK',
             joinedDate: data.created_at ? new Date(data.created_at).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }) : 'September 2024'
           });
         } else {
-          // Jika row profiles belum ada, fallback ke data auth
           setProfileData((prev) => ({
             ...prev,
             email: user.email || '',
@@ -418,10 +682,32 @@ export default function Profile() {
   const handleDeleteAccount = async () => {
     const confirmed = window.confirm('Apakah Anda yakin ingin menghapus akun? Tindakan ini tidak dapat dibatalkan.');
     if (confirmed) {
-      const supabase = createClient();
-      await supabase.auth.signOut();
-      localStorage.removeItem('paras-authenticated');
-      router.push('/');
+      try {
+        const supabase = createClient();
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+        if (userError || !user) {
+          throw new Error('Pengguna tidak terautentikasi.');
+        }
+
+        // 1. Hapus data dari tabel public.profiles terlebih dahulu
+        const { error: deleteProfileError } = await supabase
+          .from('profiles')
+          .delete()
+          .eq('user_id', user.id);
+
+        if (deleteProfileError) {
+          console.error('Gagal menghapus profil:', deleteProfileError.message);
+        }
+
+        // 2. Keluar sesi
+        await supabase.auth.signOut();
+        localStorage.removeItem('paras-authenticated');
+        router.push('/');
+      } catch (err) {
+        console.error('Terjadi kesalahan saat menghapus akun:', err.message);
+        alert('Gagal menghapus akun: ' + err.message);
+      }
     }
   };
 
@@ -437,10 +723,10 @@ export default function Profile() {
   ];
 
   const notifItems = [
-    { k: 'cuaca', t: 'Peringatan cuaca & bencana', s: `Untuk ${profileData.kelurahan}, ${profileData.city}` },
+    { k: 'cuaca', t: 'Peringatan cuaca & bencana', s: `Untuk ${profileData.kelurahan || 'Kelurahan'}, ${profileData.city || 'Kota'}` },
     { k: 'laporan', t: 'Perkembangan laporan', s: 'Saat status laporan berubah' },
     { k: 'aksi', t: 'Aksi Komunitas', s: 'Aksi baru & verifikasi bukti' },
-    { k: 'wa', t: 'Kirim juga lewat WhatsApp', s: profileData.phone },
+    { k: 'wa', t: 'Kirim juga lewat WhatsApp', s: profileData.phone || profileData.phone_number || '-' },
   ];
 
   const getInitials = (name) => {
@@ -501,13 +787,13 @@ export default function Profile() {
               )}
               <p className="mt-3 flex items-start gap-1.5 text-sm text-muted-foreground">
                 <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-brand" aria-hidden />
-                {profileData.kelurahan}, {profileData.kecamatan}, {profileData.city}
+                {profileData.kelurahan ? `${profileData.kelurahan}, ${profileData.kecamatan}, ${profileData.city}` : 'Atur lokasi domisili'}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">Bergabung sejak {profileData.joinedDate}</p>
             </div>
             <div className="border-t border-border">
               <Row icon={Mail} title="Email" sub={profileData.email} />
-              <Row icon={Phone} title="Nomor HP" sub={profileData.phone} />
+              <Row icon={Phone} title="Nomor HP" sub={profileData.phone || profileData.phone_number || '-'} />
             </div>
           </section>
 

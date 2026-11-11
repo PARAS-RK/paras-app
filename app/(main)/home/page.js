@@ -16,10 +16,10 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [profileData, setProfileData] = useState({
     displayName: 'Warga PARAS',
-    areaFull: 'Kel. Kebayoran Baru, Jakarta Selatan',
+    areaFull: 'Atur lokasi domisili',
   });
 
-  // Fetch profil asli dari Supabase saat load awal
+  // Fetch profil asli dari Supabase saat load awal dengan join ke tabel regions
   useEffect(() => {
     const fetchHomeData = async () => {
       try {
@@ -31,23 +31,30 @@ export default function Home() {
           return;
         }
 
+        // PERBAIKAN: Menggunakan .eq('user_id', user.id) dan join ke regions(*)
         const { data, error } = await supabase
           .from('profiles')
-          .select('*')
-          .eq('id', user.id)
+          .select('*, regions(*)')
+          .eq('user_id', user.id)
           .single();
 
         if (data && !error) {
-          const kelurahan = data.kelurahan || 'Kel. Kebayoran Baru';
-          const city = data.city || 'Jakarta Selatan';
+          const kelurahan = data.regions?.subdistrict || '';
+          const kecamatan = data.regions?.district || '';
+          const city = data.regions?.city || '';
+          
+          const formattedArea = kelurahan 
+            ? `${kelurahan}, ${kecamatan}, ${city}` 
+            : 'Atur lokasi domisili';
+
           setProfileData({
             displayName: data.full_name || user.user_metadata?.full_name || 'Warga PARAS',
-            areaFull: `${kelurahan}, ${city}`,
+            areaFull: formattedArea,
           });
         } else {
           setProfileData({
             displayName: user.user_metadata?.full_name || 'Warga PARAS',
-            areaFull: 'Kel. Kebayoran Baru, Jakarta Selatan',
+            areaFull: 'Atur lokasi domisili',
           });
         }
       } catch (err) {
@@ -130,7 +137,7 @@ export default function Home() {
           <p className="text-sm font-medium text-white/80">Selamat datang kembali,</p>
           <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl">{profileData.displayName}</h1>
           <div className="mt-5 flex items-center gap-2 text-sm text-white/90">
-            <MapPin className="h-4 w-4" />
+            <MapPin className="h-4 w-4 shrink-0" />
             <span>{profileData.areaFull}</span>
           </div>
         </div>
