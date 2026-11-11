@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { useReportContext } from "@/context/ReportContext";
 import { useAksiState } from "@/lib/aksiStore";
 import { USERS } from "@/lib/users";
-import { areaFull, areaLabel } from "@/lib/currentUser";
+import { useAdmin } from "@/context/AdminContext";
 
 const reportTabs = [
   { id: "all", label: "Semua" },
@@ -54,6 +54,7 @@ function MetricCard({ label, value, icon: Icon, tone, emergency }) {
 }
 
 export default function AdminDashboard() {
+  const { areaLabel, areaFull } = useAdmin();
   const { reports, rerouteReport } = useReportContext();
   const router = useRouter();
   const aksi = useAksiState();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { USERS } from "@/lib/users";
 import { initialProfile } from "./profile/constants";
@@ -32,27 +32,63 @@ export default function AdminProfile() {
       user.email !== profile.email
   );
 
-  function cancelEdit() {
+  /* ---------- Edit profil ---------- */
+  const startEdit = useCallback(() => setEditing(true), []);
+
+  const cancelEdit = useCallback(() => {
     setDraft(profile);
     setEditing(false);
-  }
+  }, [profile]);
 
-  function saveProfile() {
+  const saveProfile = useCallback(() => {
     setProfile(draft);
     setEditing(false);
-  }
+  }, [draft]);
 
-  function finishTransfer() {
+  /* ---------- Serah terima jabatan ---------- */
+  const openTransfer = useCallback(() => setTransferOpen(true), []);
+  const closeTransfer = useCallback(() => setTransferOpen(false), []);
+
+  const handleTransferSuccess = useCallback((member) => {
+    setTransferOpen(false);
+    setSuccessMember(member);
+  }, []);
+
+  const finishTransfer = useCallback(() => {
     try {
       localStorage.removeItem("paras_admin_auth");
     } catch {}
     router.replace("/admin/login");
-  }
+  }, [router]);
 
-  function openSecurity(type) {
+  /* ---------- Keamanan akun ---------- */
+  const openPasswordModal = useCallback(() => {
     setSecurityNotice("");
-    setSecurityModal(type);
-  }
+    setSecurityModal("password");
+  }, []);
+
+  const openEmailModal = useCallback(() => {
+    setSecurityNotice("");
+    setSecurityModal("email");
+  }, []);
+
+  const closeSecurity = useCallback(() => setSecurityModal(null), []);
+  const closeNotice = useCallback(() => setSecurityNotice(""), []);
+
+  const handlePasswordSuccess = useCallback(() => {
+    setSecurityModal(null);
+    setSecurityNotice("Kata sandi berhasil diperbarui.");
+  }, []);
+
+  // Pakai bentuk fungsi (prev => ...) supaya tidak perlu memasukkan profile/draft ke dependensi
+  const handleEmailSuccess = useCallback((newEmail) => {
+    setProfile((prev) => ({ ...prev, email: newEmail }));
+    setDraft((prev) => ({ ...prev, email: newEmail }));
+    setSecurityModal(null);
+    setSecurityNotice(
+      "Email berhasil diperbarui. Kami juga mengirim pemberitahuan ke email lama Anda."
+    );
+  }, []);
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
@@ -72,18 +108,18 @@ export default function AdminProfile() {
             draft={draft}
             setDraft={setDraft}
             editing={editing}
-            onEdit={() => setEditing(true)}
+            onEdit={startEdit}
             onCancel={cancelEdit}
             onSave={saveProfile}
           />
           <SecuritySection
             email={profile.email}
             notice={securityNotice}
-            onCloseNotice={() => setSecurityNotice("")}
-            onChangePassword={() => openSecurity("password")}
-            onChangeEmail={() => openSecurity("email")}
+            onCloseNotice={closeNotice}
+            onChangePassword={openPasswordModal}
+            onChangeEmail={openEmailModal}
           />
-          <TransferSection onOpen={() => setTransferOpen(true)} />
+          <TransferSection onOpen={openTransfer} />
         </div>
       </div>
 
@@ -92,36 +128,20 @@ export default function AdminProfile() {
       {transferOpen && (
         <TransferModal
           members={candidates}
-          onClose={() => setTransferOpen(false)}
-          onSuccess={(member) => {
-            setTransferOpen(false);
-            setSuccessMember(member);
-          }}
+          onClose={closeTransfer}
+          onSuccess={handleTransferSuccess}
         />
       )}
       {successMember && <SuccessModal member={successMember} onDone={finishTransfer} />}
 
       {securityModal === "password" && (
-        <ChangePasswordModal
-          onClose={() => setSecurityModal(null)}
-          onSuccess={() => {
-            setSecurityModal(null);
-            setSecurityNotice("Kata sandi berhasil diperbarui.");
-          }}
-        />
+        <ChangePasswordModal onClose={closeSecurity} onSuccess={handlePasswordSuccess} />
       )}
       {securityModal === "email" && (
         <ChangeEmailModal
           currentEmail={profile.email}
-          onClose={() => setSecurityModal(null)}
-          onSuccess={(newEmail) => {
-            setProfile({ ...profile, email: newEmail });
-            setDraft({ ...draft, email: newEmail });
-            setSecurityModal(null);
-            setSecurityNotice(
-              "Email berhasil diperbarui. Kami juga mengirim pemberitahuan ke email lama Anda."
-            );
-          }}
+          onClose={closeSecurity}
+          onSuccess={handleEmailSuccess}
         />
       )}
     </div>

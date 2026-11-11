@@ -9,6 +9,7 @@ import {
   ChevronRight, Leaf, Search, UserRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAdmin } from "@/context/AdminContext";
 import logo from "@/public/logo_paras_1.png";
 import AdminNotifications from "./AdminNotifications";
 
@@ -24,7 +25,9 @@ function isActive(item, pathname) {
   return item.exact ? pathname === item.path : pathname.startsWith(item.path);
 }
 
-function Sidebar({ mobile = false, admin, pathname, onNavigate, onClose }) {
+function Sidebar({ mobile = false, pathname, onNavigate, onClose }) {
+  const admin = useAdmin();
+
   return (
     <aside
       className={cn(
@@ -102,14 +105,15 @@ function Sidebar({ mobile = false, admin, pathname, onNavigate, onClose }) {
   );
 }
 
-export default function AdminShell({ children, admin }) {
+export default function AdminShell({ children }) {
+  const admin = useAdmin();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
     <div className="flex min-h-screen bg-slate-100">
       {/* Sidebar desktop */}
-      <Sidebar admin={admin} pathname={pathname} />
+      <Sidebar pathname={pathname} />
 
       {/* Drawer mobile */}
       {sidebarOpen && (
@@ -118,7 +122,6 @@ export default function AdminShell({ children, admin }) {
           <div className="relative z-10">
             <Sidebar
               mobile
-              admin={admin}
               pathname={pathname}
               onNavigate={() => setSidebarOpen(false)}
               onClose={() => setSidebarOpen(false)}

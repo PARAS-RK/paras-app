@@ -1,35 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   AlertTriangle, CheckCircle2, ChevronDown, Clock3, Mail, MapPin, Phone,
   UserCheck, Users, XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { areaLabel } from "@/lib/currentUser";
+import { useAdmin } from "@/context/AdminContext";
 import {
   approveRegistration, deadlineOf, formatRemaining, formatSubmitted,
   rejectRegistration, useRegistrations,
 } from "@/lib/memberStore";
+import { useNow } from "@/hooks/useNow";
 
 const registrationType = {
   pkk: { label: "Anggota PKK", className: "bg-pink-light text-pink-dark", Icon: Users },
   general: { label: "Warga Umum", className: "bg-slate-100 text-slate-700", Icon: UserCheck },
 };
-
-// null di render pertama supaya server & browser menghasilkan HTML yang sama (hindari hydration error)
-function useNow(interval = 60000) {
-  const [now, setNow] = useState(null);
-  useEffect(() => {
-    const first = setTimeout(() => setNow(Date.now()), 0);
-    const timer = setInterval(() => setNow(Date.now()), interval);
-    return () => {
-      clearTimeout(first);
-      clearInterval(timer);
-    };
-  }, [interval]);
-  return now;
-}
 
 function TypeBadge({ type }) {
   const t = registrationType[type];
@@ -127,6 +114,7 @@ function PendingRow({ member, now, onReject }) {
 }
 
 export default function MemberApproval() {
+  const { areaLabel } = useAdmin();
   const all = useRegistrations().filter((r) => r.kelurahan === areaLabel);
   const now = useNow();
   const [rejecting, setRejecting] = useState(null);

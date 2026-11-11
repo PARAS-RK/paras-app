@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Ban, Eye, MapPin, Search, UserCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { areaLabel } from "@/lib/currentUser";
+import { useAdmin } from "@/context/AdminContext";
 import { USERS } from "@/lib/users";
 import { useRegistrations } from "@/lib/memberStore";
 import { initials, isPkk, typeConfig, statusConfig } from "./users/helpers";
@@ -11,6 +11,7 @@ import UserDetail from "./users/UserDetail";
 import MemberApproval from "./users/MemberApproval";
 
 export default function UserManagement() {
+  const { areaLabel } = useAdmin();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("verification");
   const [statusOverrides, setStatusOverrides] = useState({});

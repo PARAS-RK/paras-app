@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { AlertTriangle, Check, Eye, EyeOff, LockKeyhole, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useDialog } from "@/hooks/useDialog";
 import MemberAvatar from "./MemberAvatar";
 import { maskPhone } from "./helpers";
 
@@ -13,7 +14,7 @@ export default function TransferModal({ members, onClose, onSuccess }) {
   const [understood, setUnderstood] = useState(false);
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const dialogRef = useRef(null);
+  const dialogRef = useDialog(onClose);
 
   const selected = members.find((member) => member.id === selectedId);
   const visibleMembers = useMemo(() => {
@@ -22,42 +23,6 @@ export default function TransferModal({ members, onClose, onSuccess }) {
       (member) => !normalized || member.name.toLowerCase().includes(normalized)
     );
   }, [members, query]);
-
-  useEffect(() => {
-    const previous = document.activeElement;
-    const dialog = dialogRef.current;
-    const focusables = () =>
-      [...dialog.querySelectorAll('button, input, [tabindex]:not([tabindex="-1"])')].filter(
-        (element) => !element.disabled
-      );
-
-    focusables()[0]?.focus();
-
-    const onKey = (event) => {
-      if (event.key === "Escape") {
-        onClose();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const items = focusables();
-      if (!items.length) return;
-      const first = items[0];
-      const last = items.at(-1);
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      previous?.focus?.();
-    };
-  }, [onClose]);
 
   return (
     <div
