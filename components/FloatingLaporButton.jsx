@@ -1,10 +1,11 @@
 'use client';
 
+import { Suspense } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { MessageCircle } from 'lucide-react';
 
-export default function FloatingLaporButton() {
+function FloatingLaporContent() {
   const pathname = usePathname();
 
   // Matikan (jangan render) tombol jika pengguna berada di route '/' atau '/home'
@@ -17,5 +18,13 @@ export default function FloatingLaporButton() {
       <MessageCircle className="h-5 w-5" />
       Lapor
     </Link>
+  );
+}
+
+export default function FloatingLaporButton() {
+  return (
+    <Suspense fallback={null}>
+      <FloatingLaporContent />
+    </Suspense>
   );
 }

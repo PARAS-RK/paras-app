@@ -1,23 +1,66 @@
 'use client';
 
-import { useState, useRef } from 'react';
-import Link from 'next/link'; // Mengubah react-router menjadi next/link
-import { Send, Paperclip, X, CheckCircle2, FileText, Image as ImageIcon, ArrowRight, MessageCircle, MapPin, Lock } from 'lucide-react'; // Mengubah 'Image' menjadi 'ImageIcon' untuk menghindari konflik
-import { cn } from '@/lib/utils';
-
-// Karena ini komponen client, mock data sementara atau ambil dari store/konteks
-const displayName = "Ibu Sari Wulandari";
-const areaLabel = "Kel. Kebayoran Baru";
-const areaFull = "Kel. Kebayoran Baru, Jakarta Selatan";
+import { useState, useRef, useEffect } from 'react';
+import Link from 'next/link';
+import { Send, Paperclip, X, CheckCircle2, FileText, Image as ImageIcon, ArrowRight, MessageCircle, MapPin, Lock, Loader2 } from 'lucide-react';
+import { cn } from '../../../lib/utils';
+import { useReportContext } from '../../../context/ReportContext';
+import { createClient } from '../../../lib/supabase/client';
 
 export default function Lapor() {
+    const { addReport } = useReportContext(); // Mengambil fungsi penambahan laporan global
     const [step, setStep] = useState('welcome');
+    const [loadingUser, setLoadingUser] = useState(true);
+    
+    // State profil dinamis dari Supabase
+    const [userProfile, setUserProfile] = useState({
+        displayName: 'Warga PARAS',
+        areaLabel: 'Kelurahan',
+        areaFull: 'Kelurahan, Kota',
+    });
+
     const [messages, setMessages] = useState([
         { role: 'bot', text: 'Halo! Selamat datang di PARAS. Saya PARA, asisten digital Anda. 👋\n\nAda yang bisa saya bantu hari ini?' },
     ]);
     const [form, setForm] = useState({ details: '', file: null, location: '' });
     const [errors, setErrors] = useState({});
     const fileRef = useRef(null);
+
+    // Ambil data profil & wilayah pengguna yang sedang login dari Supabase
+    useEffect(() => {
+        const fetchUserData = async () => {
+            try {
+                const supabase = createClient();
+                const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+                if (authError || !user) return;
+
+                const { data: profileData } = await supabase
+                    .from('profiles')
+                    .select('*, regions(*)')
+                    .eq('user_id', user.id)
+                    .maybeSingle();
+
+                if (profileData) {
+                    const subdistrict = profileData.regions?.subdistrict || 'Kelurahan';
+                    const city = profileData.regions?.city || 'Kota';
+                    setUserProfile({
+                        displayName: profileData.full_name || user.user_metadata?.full_name || 'Warga PARAS',
+                        areaLabel: subdistrict,
+                        areaFull: `${subdistrict}, ${city}`,
+                    });
+                    // Set default lokasi form dari wilayah user
+                    setForm((prev) => ({ ...prev, location: `${subdistrict}, ${city}` }));
+                }
+            } catch (err) {
+                console.error('Gagal memuat profil pelapor:', err);
+            } finally {
+                setLoadingUser(false);
+            }
+        };
+
+        fetchUserData();
+    }, []);
 
     function addMsg(role, text) {
         setMessages((prev) => [...prev, { role, text }]);
@@ -26,7 +69,7 @@ export default function Lapor() {
     function handleChoose() {
         addMsg('user', 'Saya ingin membuat laporan');
         setTimeout(() => { 
-            addMsg('bot', `Baik! Laporan akan dibuat untuk wilayah Anda, ${areaLabel}. Isi formulir di bawah ini, termasuk detail lokasi kejadiannya.`); 
+            addMsg('bot', `Baik! Laporan akan dibuat untuk wilayah Anda, ${userProfile.areaLabel}. Isi formulir di bawah ini, termasuk detail lokasi kejadiannya.`); 
             setStep('form'); 
         }, 400);
     }
@@ -45,8 +88,31 @@ export default function Lapor() {
             setErrors(e);
             return;
         }
-        addMsg('user', `Laporan dikirim (📍 ${form.location}, ${areaLabel}): "${form.details.slice(0, 60)}..."`);
+
+        // Simpan laporan ke ReportContext agar terhitung di halaman Profil
+        const newReportItem = {
+            id: `#LP-2026-${Math.floor(100 + Math.random() * 900)}`,
+            reporter: userProfile.displayName,
+            location: `${form.location}, ${userProfile.areaLabel}`,
+            details: form.details,
+            status: 'pending', // Masuk status "sedang diproses"
+            date: new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }),
+        };
+
+        if (addReport) {
+            addReport(newReportItem);
+        }
+
+        addMsg('user', `Laporan dikirim (📍 ${form.location}, ${userProfile.areaLabel}): "${form.details.slice(0, 60)}..."`);
         setTimeout(() => setStep('submitted'), 600);
+    }
+
+    if (loadingUser) {
+        return (
+            <div className="flex h-[70vh] w-full items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-[#159038]" />
+            </div>
+        );
     }
 
     return (
@@ -102,7 +168,7 @@ export default function Lapor() {
                             <div>
                                 <label htmlFor="reporter" className="block text-xs font-bold text-foreground mb-1.5">Nama Pelapor</label>
                                 <div className="relative">
-                                    <input id="reporter" type="text" value={displayName} readOnly aria-readonly="true" className="w-full text-sm font-semibold rounded-xl border border-border px-3 py-2.5 pr-9 bg-muted/60 text-muted-foreground cursor-not-allowed outline-none" />
+                                    <input id="reporter" type="text" value={userProfile.displayName} readOnly aria-readonly="true" className="w-full text-sm font-semibold rounded-xl border border-border px-3 py-2.5 pr-9 bg-muted/60 text-muted-foreground cursor-not-allowed outline-none" />
                                     <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden />
                                 </div>
                                 <p className="text-[10px] text-muted-foreground mt-1">Diambil otomatis dari profil Anda.</p>
@@ -112,7 +178,7 @@ export default function Lapor() {
                                 <legend className="block text-xs font-bold text-foreground mb-1.5">Lokasi Kejadian *</legend>
                                 <div className="flex items-center gap-2 rounded-xl border border-border bg-muted/60 px-3 py-2.5">
                                     <MapPin className="w-4 h-4 text-[#159038] shrink-0" aria-hidden />
-                                    <span className="flex-1 text-sm font-semibold text-foreground">{areaFull}</span>
+                                    <span className="flex-1 text-sm font-semibold text-foreground">{userProfile.areaFull}</span>
                                     <Lock className="w-4 h-4 text-muted-foreground" aria-hidden />
                                 </div>
                                 <label htmlFor="loc" className="sr-only">Detail lokasi</label>
@@ -167,7 +233,6 @@ export default function Lapor() {
                             <p className="text-xs text-gray-500 mb-6 leading-relaxed max-w-xs mx-auto">
                                 Laporan Anda sedang diproses. Kami akan merespons dalam 1×24 jam melalui sistem PARAS.
                             </p>
-                            {/* Diubah dari href="/reports" menjadi "/pantau" sesuai dengan arsitektur navbar Anda */}
                             <Link href="/pantau" className="inline-flex items-center gap-2 bg-[#E6008A] hover:bg-pink-600 text-white rounded-full px-6 py-3 text-sm font-bold transition-all hover:shadow-lg hover:shadow-pink-500/30">
                                 Pantau Status Laporan <ArrowRight className="w-4 h-4" />
                             </Link>

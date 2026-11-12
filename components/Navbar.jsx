@@ -1,5 +1,6 @@
 'use client';
 
+import { Suspense } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
@@ -14,7 +15,7 @@ const links = [
   { href: '/profile', label: 'Profil' },
 ];
 
-export default function Navbar() {
+function NavbarContent() {
   const pathname = usePathname();
 
   return (
@@ -53,5 +54,13 @@ export default function Navbar() {
         </div>
       </div>
     </header>
+  );
+}
+
+export default function Navbar() {
+  return (
+    <Suspense fallback={<div className="h-16 w-full bg-white border-b border-gray-100" />}>
+      <NavbarContent />
+    </Suspense>
   );
 }

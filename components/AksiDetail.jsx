@@ -1,21 +1,177 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Share2, Phone, Link2, ShieldCheck, MapPin, Clock, Calendar, Target, Camera, Image as ImageIcon, CheckCircle2, Upload, Lock, Users, ListChecks, Trophy, Leaf, Save, XCircle } from 'lucide-react';
+import { ArrowLeft, Share2, Phone, ShieldCheck, MapPin, Clock, Calendar, Target, Camera, Image as ImageIcon, CheckCircle2, Upload, Lock, Users, Trophy, Leaf, Loader2, XCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { useAksi, joinAksi, setLastStep, markSafetyRead, saveChecklist, submitOutcome, markComplete, myTaskStats, pct, waShareUrl } from '../lib/aksiStore';
 import { StatusBadge, Avatar, ProgressBar, JoinModal, ToastHost, showToast, CategoryArt, btnPrimary, btnSecondary, focusRing, fontWrap } from './AksiShared';
+import { createClient } from '../lib/supabase/client';
+
 const STEPS = ['Ringkasan', 'Panduan', 'Checklist & Hasil', 'Progres'];
 
 export default function AksiDetail({ id }) {
-  const a = useAksi(id);
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [a, setAksi] = useState(null);
+
+  useEffect(() => {
+    const fetchDetail = async () => {
+      setLoading(true);
+      try {
+        const supabase = createClient();
+        
+        const { data: actionData, error: actionError } = await supabase
+          .from('community_actions')
+          .select('*')
+          .eq('action_id', id)
+          .maybeSingle();
+
+        if (actionError || !actionData) {
+          setAksi(null);
+          setLoading(false);
+          return;
+        }
+
+        const { data: tasksData } = await supabase
+          .from('action_tasks')
+          .select('*')
+          .eq('action_id', id)
+          .order('step_order', { ascending: true });
+
+        // Hitung total peserta yang bergabung
+        const { count: totalParticipants } = await supabase
+          .from('action_participants')
+          .select('*', { count: 'exact', head: true })
+          .eq('action_id', id);
+
+        // Hitung jumlah peserta yang sudah menyelesaikan aksi berdasarkan bukti foto terunggah (bypass RLS count limit)
+        const { count: achievedCount } = await supabase
+          .from('action_completion_proofs')
+          .select('*', { count: 'exact', head: true })
+          .eq('action_id', id);
+
+        const { data: { user } } = await supabase.auth.getUser();
+        let isJoined = false;
+        let userParticipationId = null;
+        let completedTaskIds = [];
+        let existingProof = null;
+        let actionStatus = 'aktif';
+
+        if (user) {
+          const { data: partData } = await supabase
+            .from('action_participants')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('action_id', id)
+            .maybeSingle();
+            
+          if (partData) {
+            isJoined = true;
+            userParticipationId = partData.participation_id;
+
+            if (partData.completion_action_status && partData.completion_action_status.toLowerCase() === 'selesai') {
+              actionStatus = 'selesai';
+            }
+
+            const { data: progressData, error: progressError } = await supabase
+              .from('action_task_progress')
+              .select('action_task_id')
+              .eq('participation_id', userParticipationId);
+
+            if (!progressError && progressData) {
+              completedTaskIds = progressData.map((p) => p.action_task_id);
+            }
+
+            const { data: proofData } = await supabase
+              .from('action_completion_proofs')
+              .select('*')
+              .eq('participation_id', userParticipationId)
+              .maybeSingle();
+
+            if (proofData && proofData.photo_path) {
+              const path = String(proofData.photo_path).trim();
+              
+              if (path.startsWith('data:image/') || path.startsWith('http://') || path.startsWith('https://')) {
+                existingProof = path;
+                actionStatus = 'selesai';
+              } else {
+                await supabase
+                  .from('action_completion_proofs')
+                  .delete()
+                  .eq('participation_id', userParticipationId);
+                existingProof = null;
+              }
+            }
+          }
+        }
+
+        const formattedTasks = (tasksData || []).map((t) => ({
+          id: t.action_task_id,
+          title: t.step_content,
+          points: t.points || 10,
+          order: t.step_order,
+          completed: completedTaskIds.includes(t.action_task_id),
+        }));
+
+        setAksi({
+          id: actionData.action_id,
+          title: actionData.action_title,
+          objective: actionData.action_description || 'Aksi peduli lingkungan sekitar.',
+          status: actionStatus,
+          joined: isJoined,
+          participationId: userParticipationId,
+          existingProof: existingProof,
+          lastStep: actionStatus === 'selesai' ? 4 : 1,
+          safetyRead: false,
+          schedule: {
+            date: actionData.action_start_date || 'Segera',
+            time: '08:00 WIB',
+            place: 'Titik Kumpul Warga',
+          },
+          location: 'Bandung, Jawa Barat',
+          coordinator: {
+            name: 'Ketua PKK RW',
+            phone: '6281234567890',
+            initials: 'KP',
+          },
+          steps: formattedTasks.map((t) => t.title),
+          safety: [
+            'Gunakan masker dan sarung tangan pelindung.',
+            'Pastikan tetap menjaga keselamatan bersama warga sekitar.',
+            'Laporkan segera kepada koordinator jika terjadi kendala di lapangan.',
+          ],
+          tasks: formattedTasks,
+          target: 50,
+          achieved: achievedCount || (actionStatus === 'selesai' ? 1 : 0),
+          unit: 'peserta sudah menyelesaikan',
+          participants: totalParticipants || 0,
+          quota: 50,
+          pointsEarned: completedTaskIds.length * 10,
+        });
+      } catch (err) {
+        console.error('Gagal memuat detail aksi:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDetail();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#F8F9FA]">
+        <Loader2 className="h-8 w-8 animate-spin text-[#159038]" />
+      </div>
+    );
+  }
+
   if (!a) {
     return (
       <div className={cn('min-h-full bg-[#F8F9FA] px-4 py-16 text-center', fontWrap)}>
         <p className="text-[15px]">Aksi tidak ditemukan.</p>
-        <Link href="/aksi" className={cn(btnPrimary, 'mt-4')}>
+        <Link href="/aksi" className={cn(btnPrimary, 'mt-4 inline-block')}>
           Ke Daftar Aksi
         </Link>
       </div>
@@ -38,7 +194,6 @@ function Stepper({ a }) {
     if (n < 1 || n > 4 || locked(n)) return;
     setDir(n > step ? 1 : -1);
     setStep(n);
-    if (a.joined) setLastStep(a.id, n);
     window.scrollTo({ top: 0 });
   };
 
@@ -47,7 +202,6 @@ function Stepper({ a }) {
       setJoining(true);
       return;
     }
-    if (step === 2 && !a.safetyRead) markSafetyRead(a.id);
     if (step === 4) {
       router.push('/aksi');
       return;
@@ -62,7 +216,6 @@ function Stepper({ a }) {
     <div className={cn('min-h-full bg-[#F8F9FA]', fontWrap)}>
       <style>{`@keyframes aksi-in-r{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}@keyframes aksi-in-l{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:none}}@media (prefers-reduced-motion:reduce){.aksi-slide{animation:none!important}}`}</style>
       <div className="mx-auto max-w-[860px] px-4 pb-36 pt-4 lg:px-8 lg:pt-8">
-        {/* Header */}
         <div className="flex items-start gap-2">
           <button onClick={() => router.push('/aksi')} aria-label="Kembali ke daftar aksi" className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl hover:bg-white', focusRing)}>
             <ArrowLeft className="h-5 w-5" />
@@ -71,18 +224,11 @@ function Stepper({ a }) {
             <StatusBadge status={a.status} />
             <h1 className="mt-1.5 text-[22px] font-bold leading-tight lg:text-[28px]">{a.title}</h1>
           </div>
-          <a
-            href={waShareUrl(a)}
-            target="_blank"
-            rel="noreferrer"
-            aria-label="Bagikan ke WhatsApp"
-            className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#D1D5DB] bg-white hover:bg-[#F3F4F6]', focusRing)}
-          >
+          <a href={`https://wa.me/?text=${encodeURIComponent(`Yuk ikuti aksi ${a.title}`)}`} target="_blank" rel="noreferrer" aria-label="Bagikan ke WhatsApp" className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#D1D5DB] bg-white hover:bg-[#F3F4F6]', focusRing)}>
             <Share2 className="h-5 w-5 text-[#159038]" />
           </a>
         </div>
 
-        {/* Step indicator */}
         <nav aria-label="Langkah aksi" className="mt-5">
           <p className="text-sm font-semibold text-[#374151] lg:hidden">
             Langkah {step} dari 4: {STEPS[step - 1]}
@@ -117,12 +263,6 @@ function Stepper({ a }) {
           </ol>
         </nav>
 
-        {done && step !== 4 && (
-          <p className="mt-3 flex items-center gap-2 text-sm text-[#4B5563]">
-            <Lock className="h-4 w-4" aria-hidden /> Mode baca saja, aksi ini sudah selesai.
-          </p>
-        )}
-
         <div key={step} className="aksi-slide mt-5" style={{ animation: `${dir === 1 ? 'aksi-in-r' : 'aksi-in-l'} .25s ease-out` }}>
           {step === 1 && <StepRingkasan a={a} />}
           {step === 2 && <StepPanduan a={a} agree={agree} setAgree={setAgree} />}
@@ -131,7 +271,6 @@ function Stepper({ a }) {
         </div>
       </div>
 
-      {/* Sticky bottom buttons */}
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[#E5E7EB] bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-[860px] gap-3 p-3 pb-[max(12px,env(safe-area-inset-bottom))] lg:px-8">
           <button onClick={() => (step === 1 ? router.push('/aksi') : go(step - 1))} className={cn(btnSecondary, 'min-h-12 flex-1')}>
@@ -147,13 +286,43 @@ function Stepper({ a }) {
         <JoinModal
           aksi={a}
           onClose={() => setJoining(false)}
-          onConfirm={() => {
-            joinAksi(a.id);
-            setJoining(false);
-            setAgree(true);
-            showToast({ msg: 'Kamu sudah bergabung' });
-            setDir(1);
-            setStep(3);
+          onConfirm={async () => {
+            try {
+              const supabase = createClient();
+              const { data: { user } } = await supabase.auth.getUser();
+              if (!user) {
+                alert('Silakan login terlebih dahulu.');
+                return;
+              }
+
+              const { data: taskData } = await supabase
+                .from('action_tasks')
+                .select('action_task_id')
+                .eq('action_id', a.id)
+                .limit(1)
+                .maybeSingle();
+
+              const stepId = taskData ? taskData.action_task_id : 1;
+
+              const { error } = await supabase.from('action_participants').insert({
+                user_id: user.id,
+                action_id: a.id,
+                joined_at: new Date().toISOString(),
+                completion_action_status: 'terdaftar',
+                action_step_id: stepId,
+                leaderboard_point: 0,
+                streak_action: 0,
+              });
+
+              if (error) throw error;
+
+              setJoining(false);
+              setAgree(true);
+              showToast({ msg: 'Kamu sudah bergabung ke aksi ini!' });
+              window.location.reload();
+            } catch (err) {
+              alert('Gagal bergabung: ' + err.message);
+            }
           }}
         />
       )}
@@ -177,19 +346,12 @@ function LockedStep() {
   );
 }
 
-/* Langkah 1 */
 function StepRingkasan({ a }) {
   return (
     <div className="space-y-4">
       <Card>
         <h2 className="text-xl font-bold">Tujuan aksi</h2>
         <p className="mt-2 text-[15px]">{a.objective}</p>
-        <p className="mt-3 flex items-start gap-2 rounded-xl bg-[#FDF2F8] p-3 text-[15px] text-[#B3006B]">
-          <Link2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-          <span>
-            <b>Mengapa aksi ini ada?</b> Berawal dari {a.reportCount} laporan {a.reportTopic} warga.
-          </span>
-        </p>
       </Card>
       <Card>
         <h2 className="text-xl font-bold">Jadwal dan target</h2>
@@ -205,10 +367,6 @@ function StepRingkasan({ a }) {
           <li className="flex items-center gap-2">
             <MapPin className="h-5 w-5 shrink-0 text-[#159038]" aria-hidden />
             {a.schedule.place}, {a.location}
-          </li>
-          <li className="flex items-center gap-2">
-            <Target className="h-5 w-5 shrink-0 text-[#159038]" aria-hidden />
-            Target: {a.targetLabel}
           </li>
         </ul>
       </Card>
@@ -226,7 +384,6 @@ function StepRingkasan({ a }) {
   );
 }
 
-/* Langkah 2 */
 function StepPanduan({ a, agree, setAgree }) {
   const needsCheck = a.joined && !a.safetyRead && a.status !== 'selesai';
   return (
@@ -234,7 +391,7 @@ function StepPanduan({ a, agree, setAgree }) {
       <Card>
         <h2 className="text-xl font-bold">Cara melakukan</h2>
         <ol className="mt-3 space-y-3">
-          {a.steps.slice(0, 4).map((s, i) => (
+          {a.steps.map((s, i) => (
             <li key={s} className="flex gap-3">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#159038] text-sm font-bold text-white">{i + 1}</span>
               <span className="pt-1 text-[15px]">{s}</span>
@@ -253,7 +410,7 @@ function StepPanduan({ a, agree, setAgree }) {
         </ul>
       </div>
       {needsCheck && (
-        <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-[#D1D5DB] bg-white p-3 text-[15px] has-[:checked]:border-[#0F6B2A] has-[:checked]:bg-[#ECFDF5]">
+        <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-[#D1D5DB] bg-white p-3 text-[15px]">
           <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="h-6 w-6 shrink-0 accent-[#0F6B2A]" />
           Saya sudah membaca panduan keselamatan
         </label>
@@ -263,67 +420,96 @@ function StepPanduan({ a, agree, setAgree }) {
   );
 }
 
-/* Langkah 3 */
 function StepTugas({ a, readOnly }) {
-  const [draft, setDraft] = useState([]);
-  const saved = (t) => t.status === 'selesai';
-  const savedCount = a.tasks.filter(saved).length;
-  const allSaved = savedCount === a.tasks.length;
-  const toggle = (tid) => setDraft((d) => (d.includes(tid) ? d.filter((x) => x !== tid) : [...d, tid]));
+  const [checkedTasks, setCheckedTasks] = useState(
+    new Set(a.tasks.filter((t) => t.completed).map((t) => t.id))
+  );
 
-  const save = () => {
-    const n = saveChecklist(a.id, draft);
-    setDraft([]);
-    if (n) showToast({ msg: `${n} langkah tersimpan. +${10 * n} poin` });
+  const toggleTask = async (taskId) => {
+    if (readOnly || !a.participationId) return;
+
+    const newChecked = new Set(checkedTasks);
+    const isNowChecked = !newChecked.has(taskId);
+
+    if (isNowChecked) {
+      newChecked.add(taskId);
+    } else {
+      newChecked.delete(taskId);
+    }
+    setCheckedTasks(newChecked);
+
+    try {
+      const supabase = createClient();
+
+      if (isNowChecked) {
+        const { error } = await supabase.from('action_task_progress').insert({
+          participation_id: a.participationId,
+          action_task_id: taskId,
+          action_id: a.id,
+          completed_at: new Date().toISOString(),
+        });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('action_task_progress')
+          .delete()
+          .eq('participation_id', a.participationId)
+          .eq('action_task_id', taskId);
+        if (error) throw error;
+      }
+
+      showToast({ msg: 'Progres checklist diperbarui' });
+    } catch (err) {
+      console.error('Gagal menyimpan progres task:', err);
+      alert('Gagal menyimpan centang ke database: ' + err.message);
+      
+      const reverted = new Set(checkedTasks);
+      if (isNowChecked) reverted.delete(taskId);
+      else reverted.add(taskId);
+      setCheckedTasks(reverted);
+    }
   };
+
+  const savedCount = checkedTasks.size;
+  const allSaved = savedCount === a.tasks.length;
 
   return (
     <div className="space-y-4">
-      <p className="flex items-start gap-2 rounded-2xl bg-[#ECFDF5] p-3 text-[15px]">
-        <Leaf className="mt-0.5 h-5 w-5 shrink-0 text-[#0F6B2A]" aria-hidden />
-        Centang langkah yang sudah dikerjakan, lalu simpan. Setiap langkah tersimpan memberi +10 poin. Foto hanya diunggah sekali di akhir untuk menunjukkan hasil aksi.
-      </p>
-
       <Card>
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-bold">Checklist langkah</h2>
           <span className="text-sm font-semibold text-[#4B5563]">
-            {savedCount}/{a.tasks.length} tersimpan
+            {savedCount}/{a.tasks.length} selesai
           </span>
         </div>
         <div className="mt-3">
-          <ProgressBar value={pct(savedCount, a.tasks.length)} label="Progres checklist" />
+          <ProgressBar value={Math.round((savedCount / a.tasks.length) * 100)} label="Progres checklist" />
         </div>
         <ul className="mt-4 space-y-2">
           {a.tasks.map((t) => {
-            const isSaved = saved(t);
-            const checked = isSaved || draft.includes(t.id);
+            const isChecked = checkedTasks.has(t.id);
             return (
               <li key={t.id}>
                 <label
                   className={cn(
-                    'flex min-h-14 items-center gap-3 rounded-xl border p-3 text-[15px]',
-                    isSaved ? 'border-[#BBF7D0] bg-[#F0FDF4]' : checked ? 'border-[#0F6B2A] bg-[#ECFDF5]' : 'border-[#E5E7EB] bg-white',
-                    isSaved || readOnly ? 'cursor-default' : 'cursor-pointer hover:bg-[#F8F9FA]',
+                    'flex min-h-14 items-center gap-3 rounded-xl border p-3 text-[15px] cursor-pointer transition-colors',
+                    isChecked ? 'border-[#0F6B2A] bg-[#ECFDF5]' : 'border-[#E5E7EB] bg-white hover:bg-[#F8F9FA]',
+                    readOnly && 'cursor-default'
                   )}
                 >
-                  <input type="checkbox" checked={checked} disabled={isSaved || readOnly} onChange={() => toggle(t.id)} className="h-6 w-6 shrink-0 accent-[#0F6B2A]" />
-                  <span className={cn('min-w-0 flex-1 font-semibold', isSaved && 'text-[#374151]')}>{t.title}</span>
-                  {isSaved && (
-                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#DCFCE7] px-2 py-0.5 text-xs font-semibold text-[#0F6B2A]">
-                      <CheckCircle2 className="h-3.5 w-3.5" aria-hidden /> Tersimpan
-                    </span>
-                  )}
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    disabled={readOnly}
+                    onChange={() => toggleTask(t.id)}
+                    className="h-6 w-6 shrink-0 accent-[#0F6B2A]"
+                  />
+                  <span className="min-w-0 flex-1 font-semibold text-[#374151]">{t.title}</span>
+                  <span className="text-xs font-semibold text-[#159038]">+{t.points} Poin</span>
                 </label>
               </li>
             );
           })}
         </ul>
-        {!readOnly && !allSaved && (
-          <button onClick={save} disabled={!draft.length} className={cn(btnPrimary, 'mt-4 w-full')}>
-            <Save className="h-4 w-4" /> Simpan Checklist{draft.length ? ` (${draft.length})` : ''}
-          </button>
-        )}
       </Card>
 
       <OutcomeUpload a={a} unlocked={allSaved} readOnly={readOnly} />
@@ -331,81 +517,154 @@ function StepTugas({ a, readOnly }) {
   );
 }
 
-const SAMPLE = ['#BBF7D0', '#BFDBFE', '#FBCFE8'];
-
-function Photo({ src }) {
-  return src.startsWith('#') ? (
-    <div className="flex h-full w-full items-center justify-center" style={{ background: src }}>
-      <ImageIcon className="h-6 w-6 text-[#111827]/40" aria-label="Foto contoh" />
-    </div>
-  ) : (
-    <img src={src} alt="Foto bukti" className="h-full w-full object-cover" />
-  );
-}
-
 function OutcomeUpload({ a, unlocked, readOnly }) {
-  const [photos, setPhotos] = useState([]);
+  const getInitialPhoto = () => {
+    if (!a.existingProof || typeof a.existingProof !== 'string') return [];
+    const val = a.existingProof.trim();
+    if (val.startsWith('data:image/') || val.startsWith('http://') || val.startsWith('https://')) {
+      return [val];
+    }
+    return [];
+  };
+
+  const [photos, setPhotos] = useState(getInitialPhoto);
   const [note, setNote] = useState('');
   const [err, setErr] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const camRef = useRef(null);
   const galRef = useRef(null);
 
-  const add = (files) => {
-    if (!files) return;
-    const urls = Array.from(files)
-      .filter((f) => f.type.startsWith('image/'))
-      .map((f) => URL.createObjectURL(f));
-    setPhotos((p) => [...p, ...urls].slice(0, 3));
+  const convertFileToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = (error) => reject(error);
+    });
   };
 
-  const send = () => {
-    if (!photos.length) {
-      setErr('Tambahkan minimal 1 foto dulu, ya.');
+  const addFiles = async (files) => {
+    if (!files) return;
+    const imageFiles = Array.from(files).filter((f) => f.type.startsWith('image/'));
+    if (imageFiles.length === 0) return;
+
+    try {
+      const base64List = [];
+      for (const file of imageFiles) {
+        const base64 = await convertFileToBase64(file);
+        base64List.push(base64);
+      }
+      setPhotos((p) => [...p, ...base64List].slice(0, 3));
+      setErr('');
+    } catch (e) {
+      console.error('Gagal membaca file gambar:', e);
+      setErr('Gagal memuat gambar.');
+    }
+  };
+
+  const sendOutcome = async () => {
+    if (!photos.length || (!photos[0].startsWith('data:image/') && !photos[0].startsWith('http') && !photos[0].startsWith('https://'))) {
+      setErr('Tambahkan minimal 1 foto bukti pengerjaan yang valid.');
       return;
     }
-    submitOutcome(a.id, photos, note.trim());
-    setPhotos([]);
-    setNote('');
-    setErr('');
-    showToast({ msg: 'Foto hasil aksi terkirim. Terima kasih!' });
+
+    setSubmitting(true);
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (!user) {
+        alert('Silakan login terlebih dahulu.');
+        setSubmitting(false);
+        return;
+      }
+
+      // 1. Cari data partisipasi berdasarkan user yang login dan action_id
+      const { data: partRecord, error: partFindError } = await supabase
+        .from('action_participants')
+        .select('participation_id')
+        .eq('user_id', user.id)
+        .eq('action_id', a.id)
+        .maybeSingle();
+
+      let activeParticipationId = a.participationId;
+
+      if (partFindError || !partRecord) {
+        // Jika belum terdaftar, buat data partisipasi baru secara otomatis
+        const { data: newPart, error: insertError } = await supabase
+          .from('action_participants')
+          .insert({
+            user_id: user.id,
+            action_id: a.id,
+            joined_at: new Date().toISOString(),
+            completion_action_status: 'selesai',
+            leaderboard_point: 10,
+            streak_action: 1,
+          })
+          .select('participation_id')
+          .single();
+
+        if (insertError) throw insertError;
+        activeParticipationId = newPart.participation_id;
+      } else {
+        activeParticipationId = partRecord.participation_id;
+        
+        // 2. Ubah status langsung pada tabel action_participants menjadi 'selesai'
+        const { error: participantError } = await supabase
+          .from('action_participants')
+          .update({ completion_action_status: 'selesai' })
+          .eq('participation_id', activeParticipationId);
+
+        if (participantError) throw participantError;
+      }
+
+      // 3. Simpan foto bukti ke tabel action_completion_proofs
+      const { error: proofError } = await supabase
+        .from('action_completion_proofs')
+        .upsert({
+          participation_id: activeParticipationId,
+          action_id: a.id,
+          photo_path: photos[0],
+          verification_status: 'pending',
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'participation_id' });
+
+      if (proofError) throw proofError;
+
+      showToast({ msg: 'Foto bukti berhasil dikirim dan aksi selesai!' });
+      
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+
+    } catch (err) {
+      console.error('Gagal mengirim bukti:', err);
+      alert('Gagal mengirim bukti: ' + (err.message || JSON.stringify(err)));
+      setSubmitting(false);
+    }
   };
 
   const header = (
     <div className="flex items-center gap-3">
       <span className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl', unlocked ? 'bg-[#ECFDF5] text-[#159038]' : 'bg-[#F3F4F6] text-[#6B7280]')}>
-        {unlocked ? <Camera className="h-5 w-5" aria-hidden /> : <Lock className="h-5 w-5" aria-hidden />}
+        {unlocked ? <Camera className="h-5 w-5" /> : <Lock className="h-5 w-5" />}
       </span>
-      <div className="min-w-0">
+      <div>
         <h2 className="text-lg font-bold">Foto hasil aksi</h2>
-        <p className="text-sm text-[#4B5563]">Langkah terakhir: tunjukkan hasil aksi yang sudah kamu selesaikan.</p>
+        <p className="text-sm text-[#4B5563]">Selesaikan semua checklist di atas untuk membuka upload foto.</p>
       </div>
     </div>
   );
 
-  if (a.outcome) {
-    return (
-      <Card>
-        {header}
-        <div className="mt-3 grid grid-cols-3 gap-2">
-          {a.outcome.photos.map((p, i) => (
-            <div key={i} className="aspect-square overflow-hidden rounded-xl">
-              <Photo src={p} />
-            </div>
-          ))}
-        </div>
-        {a.outcome.note && <p className="mt-2 text-[15px] text-[#374151]">{a.outcome.note}</p>}
-        <p className="mt-3 flex items-center gap-2 text-sm font-semibold text-[#0F6B2A]">
-          <CheckCircle2 className="h-4 w-4" aria-hidden /> Foto hasil terkirim
-        </p>
-      </Card>
-    );
-  }
+  const hasValidPhoto = photos.length > 0 && (photos[0].startsWith('data:image/') || photos[0].startsWith('http') || photos[0].startsWith('https://'));
 
-  if (!unlocked || readOnly) {
+  if (!unlocked && !hasValidPhoto) {
     return (
       <Card>
         {header}
-        <p className="mt-3 rounded-xl bg-[#F8F9FA] p-3 text-sm text-[#4B5563]">{readOnly ? 'Tidak ada foto hasil yang dikirim.' : 'Simpan semua langkah checklist terlebih dahulu untuk mengunggah foto hasil.'}</p>
+        <p className="mt-3 rounded-xl bg-[#F8F9FA] p-3 text-sm text-[#4B5563]">
+          Selesaikan semua checklist langkah di atas untuk mengunggah foto bukti pengerjaan.
+        </p>
       </Card>
     );
   }
@@ -413,168 +672,67 @@ function OutcomeUpload({ a, unlocked, readOnly }) {
   return (
     <Card>
       {header}
-      <div className="mt-4">
+      <div className="mt-4 space-y-3">
         <div className="grid grid-cols-2 gap-2">
           <button onClick={() => camRef.current?.click()} className={cn(btnSecondary, 'min-h-16 flex-col gap-1')}>
-            <Camera className="h-6 w-6 text-[#159038]" aria-hidden /> Ambil Foto
+            <Camera className="h-6 w-6 text-[#159038]" /> Ambil Foto
           </button>
           <button onClick={() => galRef.current?.click()} className={cn(btnSecondary, 'min-h-16 flex-col gap-1')}>
-            <ImageIcon className="h-6 w-6 text-[#159038]" aria-hidden /> Pilih dari Galeri
+            <ImageIcon className="h-6 w-6 text-[#159038]" /> Pilih Galeri
           </button>
-          <input
-            ref={camRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            hidden
-            onChange={(e) => {
-              add(e.target.files);
-              e.target.value = '';
-            }}
-          />
-          <input
-            ref={galRef}
-            type="file"
-            accept="image/*"
-            multiple
-            hidden
-            onChange={(e) => {
-              add(e.target.files);
-              e.target.value = '';
-            }}
-          />
+          <input ref={camRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }} />
+          <input ref={galRef} type="file" accept="image/*" multiple hidden onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }} />
         </div>
-        <button onClick={() => setPhotos((p) => [...p, SAMPLE[p.length % 3]].slice(0, 3))} className={cn('mt-1 min-h-11 rounded text-sm font-semibold text-[#0F6B2A] underline underline-offset-4', focusRing)}>
-          Pakai foto contoh
-        </button>
+
         {photos.length > 0 && (
-          <div className="mt-2 grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {photos.map((p, i) => (
-              <div key={i} className="relative aspect-square overflow-hidden rounded-xl">
-                <Photo src={p} />
-                <button
-                  onClick={() => setPhotos((ps) => ps.filter((_, j) => j !== i))}
-                  aria-label={`Hapus foto ${i + 1}`}
-                  className={cn('absolute right-1 top-1 flex h-9 w-9 items-center justify-center rounded-full bg-white/90', focusRing)}
-                >
-                  <XCircle className="h-4 w-4" />
+              <div key={i} className="relative aspect-square overflow-hidden rounded-xl border">
+                {(typeof p === 'string' && (p.startsWith('data:image/') || p.startsWith('http') || p.startsWith('https://'))) ? (
+                  <img src={p} alt="Bukti" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-gray-100 text-xs text-gray-400 p-2 text-center">Format foto tidak valid</div>
+                )}
+                <button onClick={() => setPhotos(photos.filter((_, idx) => idx !== i))} className="absolute right-1 top-1 rounded-full bg-white p-1 shadow">
+                  <XCircle className="h-4 w-4 text-red-500" />
                 </button>
               </div>
             ))}
           </div>
         )}
-        <label className="mt-3 block">
-          <span className="text-sm font-semibold">Keterangan singkat</span>
-          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Contoh: lubang di halaman depan" className={cn('mt-1 min-h-12 w-full rounded-xl border border-[#D1D5DB] px-3 text-[15px]', focusRing)} />
-        </label>
-        {err && (
-          <p role="alert" className="mt-2 text-sm font-semibold text-[#B91C1C]">
-            {err}
-          </p>
-        )}
-        <button onClick={send} className={cn(btnPrimary, 'mt-3 w-full')}>
-          <Upload className="h-4 w-4" /> Kirim Foto Hasil
+
+        <input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Keterangan singkat (opsional)"
+          className={cn('min-h-12 w-full rounded-xl border border-[#D1D5DB] px-3 text-[15px]', focusRing)}
+        />
+
+        {err && <p className="text-sm font-semibold text-red-600">{err}</p>}
+
+        <button onClick={sendOutcome} disabled={submitting} className={cn(btnPrimary, 'w-full')}>
+          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} 
+          {submitting ? 'Mengirim...' : 'Kirim Foto Bukti Selesai'}
         </button>
       </div>
     </Card>
   );
 }
 
-/* Langkah 4 */
-function Ring({ value }) {
-  const r = 42,
-    c = 2 * Math.PI * r;
-  return (
-    <svg viewBox="0 0 100 100" className="h-28 w-28 shrink-0" role="img" aria-label={`${value}% selesai`}>
-      <circle cx="50" cy="50" r={r} fill="none" stroke="#E5E7EB" strokeWidth="10" />
-      <circle
-        cx="50"
-        cy="50"
-        r={r}
-        fill="none"
-        stroke="#159038"
-        strokeWidth="10"
-        strokeLinecap="round"
-        strokeDasharray={c}
-        strokeDashoffset={c * (1 - value / 100)}
-        transform="rotate(-90 50 50)"
-        style={{ transition: 'stroke-dashoffset .5s' }}
-      />
-      <text x="50" y="56" textAnchor="middle" fontSize="18" fontWeight="700" fill="#111827">
-        {value}%
-      </text>
-    </svg>
-  );
-}
-
 function StepProgres({ a, onRanking }) {
-  const m = myTaskStats(a);
-  const done = a.status === 'selesai';
   return (
     <div className="space-y-4">
-      {done && (
-        <>
-          <div className="flex items-center gap-3 rounded-2xl bg-[#0F6B2A] p-4 text-white">
-            <CheckCircle2 className="h-7 w-7 shrink-0" aria-hidden />
-            <p className="text-lg font-bold">Aksi Selesai - Terima kasih, ibu-ibu!</p>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { Icon: Users, v: `${a.participants}`, l: 'Peserta' },
-              { Icon: ListChecks, v: `${a.tasksDoneTotal}`, l: 'Tugas selesai' },
-              { Icon: Target, v: `${a.achieved} ${a.unit}`, l: 'Hasil utama' },
-            ].map((x) => (
-              <div key={x.l} className="rounded-2xl bg-white p-3 text-center shadow-sm">
-                <x.Icon className="mx-auto h-5 w-5 text-[#159038]" aria-hidden />
-                <p className="mt-1 text-lg font-bold leading-tight">{x.v}</p>
-                <p className="text-sm text-[#4B5563]">{x.l}</p>
-              </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            {[0, 1, 2].map((i) => (
-              <CategoryArt key={i} category={a.category} className="aspect-square rounded-xl" />
-            ))}
-          </div>
-        </>
-      )}
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <h2 className="text-lg font-bold">Progres Saya</h2>
-          <div className="mt-3 flex items-center gap-4">
-            <Ring value={pct(m.done, m.total)} />
-            <p className="text-[15px]">
-              {m.done} dari {m.total} tugas selesai
-            </p>
-          </div>
-        </Card>
-        <Card className="flex flex-col justify-center bg-[#ECFDF5]">
-          <Leaf className="h-6 w-6 text-[#0F6B2A]" aria-hidden />
-          <p className="mt-2 text-sm text-[#374151]">Poin didapat</p>
-          <p className="text-3xl font-bold text-[#0F6B2A]">+{a.pointsEarned}</p>
-        </Card>
-      </div>
-
       <Card>
         <h2 className="text-lg font-bold">Progres Komunitas</h2>
         <p className="mt-1 text-2xl font-bold text-[#0F6B2A]">
-          {a.achieved} dari {a.target} {a.unit}
+          {a.achieved} dari {a.quota || 50} {a.unit}
         </p>
-        <div className="mt-3">
-          <ProgressBar value={pct(a.achieved, a.target)} big label="Progres komunitas" />
+        <div className="mt-4">
+          <ProgressBar value={Math.round((a.achieved / (a.quota || 50)) * 100)} label="Progres penyelesaian peserta" />
         </div>
-        <p className="mt-3 flex items-start gap-2 text-[15px] text-[#374151]">
-          <Users className="mt-0.5 h-5 w-5 shrink-0 text-[#0F6B2A]" aria-hidden />
-          Aksi selesai saat target komunitas tercapai, bukan saat satu orang menyelesaikan tugasnya.
-        </p>
       </Card>
-
       <button onClick={onRanking} className={cn(btnSecondary, 'min-h-12 w-full')}>
         <Trophy className="h-5 w-5 text-[#F5B301]" aria-hidden /> Lihat Peringkat
-      </button>
-      <button onClick={() => markComplete(a.id)} className={cn('mx-auto block min-h-11 rounded-lg px-3 text-sm text-[#6B7280] underline underline-offset-4', focusRing)}>
-        {done ? 'Demo: kembali ke tampilan aktif' : 'Demo: lihat tampilan aksi selesai'}
       </button>
     </div>
   );

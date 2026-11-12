@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, ArrowRight, Award, ChevronRight, CloudRain, CloudLightning, FileText, Leaf, MapPin, MessageCircle, Loader2 } from 'lucide-react';
 import { useReportContext } from '../../../context/ReportContext';
-import { useAksiState } from '../store/aksiStore';
 import { createClient } from '../../../lib/supabase/client';
 
 import { Card, CardContent } from '../../../components/ui/card';
@@ -13,13 +12,20 @@ import { Progress } from '../../../components/ui/progress';
 
 export default function Home() {
   const router = useRouter();
+  const { reports } = useReportContext();
   const [loading, setLoading] = useState(true);
   const [profileData, setProfileData] = useState({
     displayName: 'Warga PARAS',
     areaFull: 'Atur lokasi domisili',
   });
+  const [homeStats, setHomeStats] = useState({
+    points: 0,
+    streak: 0,
+    completedCount: 0,
+    activeAction: null,
+  });
 
-  // Fetch profil asli dari Supabase saat load awal dengan join ke tabel regions
+  // Fetch profil asli dan data statistik dari Supabase saat load awal
   useEffect(() => {
     const fetchHomeData = async () => {
       try {
@@ -31,24 +37,24 @@ export default function Home() {
           return;
         }
 
-        // PERBAIKAN: Menggunakan .eq('user_id', user.id) dan join ke regions(*)
-        const { data, error } = await supabase
+        // 1. Ambil data profil & regions
+        const { data: dataProfile, error } = await supabase
           .from('profiles')
           .select('*, regions(*)')
           .eq('user_id', user.id)
-          .single();
+          .maybeSingle();
 
-        if (data && !error) {
-          const kelurahan = data.regions?.subdistrict || '';
-          const kecamatan = data.regions?.district || '';
-          const city = data.regions?.city || '';
+        if (dataProfile && !error) {
+          const kelurahan = dataProfile.regions?.subdistrict || '';
+          const kecamatan = dataProfile.regions?.district || '';
+          const city = dataProfile.regions?.city || '';
           
           const formattedArea = kelurahan 
             ? `${kelurahan}, ${kecamatan}, ${city}` 
             : 'Atur lokasi domisili';
 
           setProfileData({
-            displayName: data.full_name || user.user_metadata?.full_name || 'Warga PARAS',
+            displayName: dataProfile.full_name || user.user_metadata?.full_name || 'Warga PARAS',
             areaFull: formattedArea,
           });
         } else {
@@ -57,6 +63,52 @@ export default function Home() {
             areaFull: 'Atur lokasi domisili',
           });
         }
+
+        // 2. Ambil data partisipasi aksi user dari Supabase
+        const { data: partRecords } = await supabase
+          .from('action_participants')
+          .select('*, community_actions(*)')
+          .eq('user_id', user.id);
+
+        let completedCount = 0;
+        let userPoints = 0;
+        let userStreak = 0;
+        let ongoingAction = null;
+
+        if (partRecords && partRecords.length > 0) {
+          completedCount = partRecords.length;
+          userPoints = completedCount * 30; // 30 poin per aksi
+          userStreak = 1;
+
+          // Ambil aksi pertama yang sedang diikuti sebagai "Aksi Saya"
+          const firstPart = partRecords[0];
+          if (firstPart && firstPart.community_actions) {
+            // Menghitung progress secara dinamis berdasarkan status penyelesaian
+            const status = String(firstPart.completion_action_status || '').trim().toLowerCase();
+            const progressVal = status === 'selesai' || status === 'done' ? 100 : 50;
+
+            ongoingAction = {
+              id: firstPart.community_actions.action_id,
+              title: firstPart.community_actions.action_title,
+              achieved: progressVal, 
+              target: 100,
+            };
+          }
+        }
+
+        // Sinkronkan dengan kolom points/streak di profiles jika ada
+        if (dataProfile) {
+          if (dataProfile.points > userPoints) userPoints = dataProfile.points;
+          if (dataProfile.streak > userStreak) userStreak = dataProfile.streak;
+        }
+
+        setHomeStats({
+          points: userPoints,
+          streak: userStreak,
+          completedCount: completedCount,
+          activeAction: ongoingAction,
+        });
+
       } catch (err) {
         console.error('Gagal memuat data beranda:', err);
       } finally {
@@ -67,9 +119,11 @@ export default function Home() {
     fetchHomeData();
   }, [router]);
 
-  const aksi = useAksiState();
-  const current = aksi.aksi.find((a) => a.joined && a.status === 'aktif');
+  // Hitung laporan milik user yang sedang diproses
+  const mine = reports.filter((r) => r.reporter === profileData.displayName);
+  const inProgressReports = mine.filter((r) => r.status === 'pending' || r.status === 'in_progress').length;
 
+  const current = homeStats.activeAction;
   const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
 
   const tiles = [
@@ -89,24 +143,24 @@ export default function Home() {
           icon: Leaf,
           tone: 'text-[#159038] bg-[#159038]/10',
           label: 'Aksi Komunitas',
-          value: `${aksi.aksi.filter((a) => a.status !== 'selesai').length}`,
-          sub: 'aksi tersedia',
+          value: `${homeStats.completedCount}`,
+          sub: 'Aksi selesai diikuti',
         },
     {
       to: '/reports',
       icon: FileText,
       tone: 'text-[#E6008A] bg-[#E6008A]/10',
       label: 'Laporan Saya',
-      value: '2',
-      sub: '2 sedang diproses',
+      value: `${mine.length}`,
+      sub: `${inProgressReports} sedang diproses`,
     },
     {
       to: '/aksi?seg=peringkat',
       icon: Award,
       tone: 'text-amber-600 bg-amber-100',
       label: 'Poin Saya',
-      value: `${aksi.points}`,
-      sub: `${aksi.streak} minggu beruntun`,
+      value: `${homeStats.points}`,
+      sub: `${homeStats.streak} minggu beruntun`,
     },
     {
       to: '/info',

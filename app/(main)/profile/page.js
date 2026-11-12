@@ -257,7 +257,6 @@ function EditProfileModal({ isOpen, onClose, currentProfile, onSuccess }) {
         .upsert(upsertPayload, { onConflict: 'user_id' });
 
       if (updateProfileError) {
-        console.error('DETAIL ERROR SUPABASE:', updateProfileError);
         throw new Error('Gagal menyimpan profil: ' + updateProfileError.message);
       }
 
@@ -596,6 +595,7 @@ export default function Profile() {
   const [loadingUser, setLoadingUser] = useState(true);
 
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [userStats, setUserStats] = useState({ completed: 0, points: 0, streak: 0, activeJoined: 0 });
   const [profileData, setProfileData] = useState({
     full_name: 'Warga PARAS',
     email: '',
@@ -611,9 +611,9 @@ export default function Profile() {
     joinedDate: 'September 2024'
   });
 
-  // Fetch profil dari Supabase saat load awal dengan join ke tabel regions
+  // Fetch profil dan statistik dari Supabase secara langsung agar sinkron
   useEffect(() => {
-    const fetchProfile = async () => {
+    const fetchProfileAndStats = async () => {
       try {
         const supabase = createClient();
         const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -623,26 +623,27 @@ export default function Profile() {
           return;
         }
 
-        const { data, error } = await supabase
+        // Ambil data profil & regions
+        const { data: dataProfile, error: profileError } = await supabase
           .from('profiles')
           .select('*, regions(*)')
           .eq('user_id', user.id)
-          .single();
+          .maybeSingle();
 
-        if (data && !error) {
+        if (dataProfile && !profileError) {
           setProfileData({
-            full_name: data.full_name || user.user_metadata?.full_name || 'Warga PARAS',
+            full_name: dataProfile.full_name || user.user_metadata?.full_name || 'Warga PARAS',
             email: user.email || '',
-            phone: data.phone_number || '',
-            phone_number: data.phone_number || '',
-            avatar_url: data.avatar_url || '',
-            kelurahan: data.regions?.subdistrict || '',
-            kecamatan: data.regions?.district || '',
-            city: data.regions?.city || '',
-            province: data.regions?.province || '',
-            pkkStatus: data.account_status || 'verified',
-            pkkRole: data.account_category || 'PKK',
-            joinedDate: data.created_at ? new Date(data.created_at).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }) : 'September 2024'
+            phone: dataProfile.phone_number || '',
+            phone_number: dataProfile.phone_number || '',
+            avatar_url: dataProfile.avatar_url || '',
+            kelurahan: dataProfile.regions?.subdistrict || '',
+            kecamatan: dataProfile.regions?.district || '',
+            city: dataProfile.regions?.city || '',
+            province: dataProfile.regions?.province || '',
+            pkkStatus: dataProfile.account_status || 'verified',
+            pkkRole: dataProfile.account_category || 'PKK',
+            joinedDate: dataProfile.created_at ? new Date(dataProfile.created_at).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }) : 'September 2024'
           });
         } else {
           setProfileData((prev) => ({
@@ -651,14 +652,43 @@ export default function Profile() {
             full_name: user.user_metadata?.full_name || 'Warga PARAS',
           }));
         }
+
+        // Ambil data partisipasi aksi dari tabel action_participants
+        const { data: partRecords } = await supabase
+          .from('action_participants')
+          .select('*')
+          .eq('user_id', user.id);
+
+        let completedCount = 0;
+        let userPoints = 0;
+        let userStreak = 0;
+
+        if (partRecords && partRecords.length > 0) {
+          completedCount = partRecords.length;
+          userPoints = completedCount * 30; // 30 poin per aksi
+          userStreak = 1;
+        }
+
+        if (dataProfile) {
+          if (dataProfile.points > userPoints) userPoints = dataProfile.points;
+          if (dataProfile.streak > userStreak) userStreak = dataProfile.streak;
+        }
+
+        setUserStats({
+          completed: completedCount,
+          points: userPoints,
+          streak: userStreak,
+          activeJoined: 1,
+        });
+
       } catch (err) {
-        console.error('Gagal mengambil data profil:', err);
+        console.error('Gagal mengambil data profil dan statistik:', err);
       } finally {
         setLoadingUser(false);
       }
     };
 
-    fetchProfile();
+    fetchProfileAndStats();
   }, [router]);
 
   useEffect(() => {
@@ -690,7 +720,6 @@ export default function Profile() {
           throw new Error('Pengguna tidak terautentikasi.');
         }
 
-        // 1. Hapus data dari tabel public.profiles terlebih dahulu
         const { error: deleteProfileError } = await supabase
           .from('profiles')
           .delete()
@@ -700,7 +729,6 @@ export default function Profile() {
           console.error('Gagal menghapus profil:', deleteProfileError.message);
         }
 
-        // 2. Keluar sesi
         await supabase.auth.signOut();
         localStorage.removeItem('paras-authenticated');
         router.push('/');
@@ -713,13 +741,12 @@ export default function Profile() {
 
   const mine = reports.filter((r) => r.reporter === profileData.full_name);
   const inProgress = mine.filter((r) => r.status === 'pending' || r.status === 'in_progress').length;
-  const joinedNow = aksi.aksi.filter((a) => a.joined && a.status !== 'selesai').length;
 
   const stats = [
     { icon: FileText, value: mine.length, label: 'Laporan dikirim', sub: `${inProgress} sedang diproses`, to: '/reports' },
-    { icon: Leaf, value: aksi.completed, label: 'Aksi selesai', sub: `${joinedNow} sedang diikuti`, to: '/aksi' },
-    { icon: Award, value: aksi.points, label: 'Poin', sub: 'Level Tunas', to: '/aksi?seg=peringkat' },
-    { icon: Flame, value: aksi.streak, label: 'Minggu beruntun', sub: 'Pertahankan!', to: '/aksi?seg=peringkat' },
+    { icon: Leaf, value: userStats.completed, label: 'Aksi selesai', sub: `${userStats.activeJoined} sedang diikuti`, to: '/aksi' },
+    { icon: Award, value: userStats.points, label: 'Poin', sub: 'Level Tunas', to: '/aksi?seg=peringkat' },
+    { icon: Flame, value: userStats.streak, label: 'Minggu beruntun', sub: 'Pertahankan!', to: '/aksi?seg=peringkat' },
   ];
 
   const notifItems = [
