@@ -7,17 +7,17 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { cn } from "../../lib/utils";
-import { useReportContext } from "../../context/ReportContext";
-import { useAksiState } from "../../lib/aksiStore";
-import { USERS } from "../../lib/users";
-import { useAdmin } from "../../context/AdminContext";
-import { areaFull, areaLabel } from '../../lib/currentUser';
+import { cn } from "@/lib/utils";
+import { useReportContext } from "@/context/ReportContext";
+import { useAksiState } from "@/lib/aksiStore";
+import { USERS } from "@/lib/users";
+import { useAdmin } from "@/context/AdminContext";
+import { areaFull, areaLabel } from '@/lib/currentUser';
 
 const reportTabs = [
-  { id: "all", label: "Semua" },
-  { id: "emergency", label: "Jalur A - Darurat" },
-  { id: "community", label: "Jalur B - Komunitas" },
+  { id: 'all', label: 'Semua' },
+  { id: 'emergency', label: 'Jalur A - Darurat' },
+  { id: 'community', label: 'Jalur B - Komunitas' },
 ];
 
 const reportLocations = {
@@ -31,10 +31,7 @@ const reportLocations = {
 
 function MetricCard({ label, value, icon: Icon, tone, emergency }) {
   return (
-    <article
-      className={cn(
-        "rounded-2xl border bg-white p-5 shadow-sm",
-        emergency ? "border-red-200" : "border-slate-200"
+    <article className={cn("rounded-2xl border bg-white p-5 shadow-sm", emergency ? "border-red-200" : "border-slate-200"
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -58,7 +55,7 @@ export default function AdminDashboard() {
   const [rejectingReport, setRejectingReport] = useState(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const { areaLabel, areaFull } = useAdmin();
-  const { reports, rerouteReport, reviewDasboardReport, rejectReport, } = useReportContext();
+  const { reports, rerouteReport, reviewDashboardReport, rejectReport, } = useReportContext();
   const router = useRouter();
   const aksi = useAksiState();
   const [reportTab, setReportTab] = useState("all");
@@ -85,7 +82,7 @@ export default function AdminDashboard() {
   }));
 
   const filteredReports = dashboardReports
-    .filter((report) => report.status !== "rejected")
+    .filter((report) => ! report.dashboardDecision)
     .filter((report) =>
         reportTab === 'all' ||
         (reportTab === 'emergency'
@@ -140,7 +137,7 @@ function overrideReport(report) {
       <header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <h1 className="text-2xl font-black text-slate-900">Dashboard</h1>
         <span className="inline-flex w-fit items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-black text-slate-600 shadow-sm">
-          <MapPin className="h-3.5 w-3.5 text-brand" /> {areaFull}
+          <MapPin className="h-3.5 w-3.5 text-brand" /> {areaFull || areaLabel}
         </span>
       </header>
 
