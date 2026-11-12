@@ -7,11 +7,12 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { cn } from "@/lib/utils";
-import { useReportContext } from "@/context/ReportContext";
-import { useAksiState } from "@/lib/aksiStore";
-import { USERS } from "@/lib/users";
-import { useAdmin } from "@/context/AdminContext";
+import { cn } from "../../lib/utils";
+import { useReportContext } from "../../context/ReportContext";
+import { useAksiState } from "../../lib/aksiStore";
+import { USERS } from "../../lib/users";
+import { useAdmin } from "../../context/AdminContext";
+import { areaFull, areaLabel } from '../../lib/currentUser';
 
 const reportTabs = [
   { id: "all", label: "Semua" },
@@ -54,22 +55,22 @@ function MetricCard({ label, value, icon: Icon, tone, emergency }) {
 }
 
 export default function AdminDashboard() {
+  const [rejectingReport, setRejectingReport] = useState(null);
+  const [rejectionReason, setRejectionReason] = useState('');
   const { areaLabel, areaFull } = useAdmin();
-  const { reports, rerouteReport } = useReportContext();
+  const { reports, rerouteReport, reviewDasboardReport, rejectReport, } = useReportContext();
   const router = useRouter();
   const aksi = useAksiState();
   const [reportTab, setReportTab] = useState("all");
   const [expandedReportId, setExpandedReportId] = useState(null);
   const [routingNotice, setRoutingNotice] = useState("");
-
   const scopedUsers = USERS.filter((user) => user.area === areaLabel);
-  const activeReports = reports.filter(
+  const scopedReports = reports.filter((report) => report.area === areaLabel);
+  const activeReports = scopedReports.filter(
     (report) => report.status === "pending" || report.status === "in_progress"
   );
-  const emergencyReports = activeReports.filter((report) => report.urgency >= 7);
-  const completedActions =
-    aksi.aksi.filter((item) => item.location === areaLabel && item.status === "selesai").length +
-    aksi.completed;
+  const emergencyReports = scopedReports.filter((report) => report.handledBy === 'bpbd' && (report.status === 'pending' || report.status === 'in_progress'));
+  const completedActions = aksi.aksi.filter((item) => item.location === areaLabel && item.status === "selesai").length;
   const activePkkMembers = scopedUsers.filter(
     (user) => user.status === "active" && (user.type === "pkk_member" || user.type === "pkk_chair")
   ).length;
@@ -77,7 +78,7 @@ export default function AdminDashboard() {
     (user) => user.status === "active" && user.type === "general"
   ).length;
 
-  const dashboardReports = reports.map((report) => ({
+  const dashboardReports = scopedReports.map((report) => ({
     ...report,
     area: areaLabel,
     location: reportLocations[report.id] || areaLabel,
@@ -85,32 +86,54 @@ export default function AdminDashboard() {
 
   const filteredReports = dashboardReports
     .filter((report) => report.status !== "rejected")
-    .filter(
-      (report) =>
-        reportTab === "all" ||
-        (reportTab === "emergency" ? report.urgency >= 7 : report.urgency < 7)
-    )
-    .slice(0, 6);
+    .filter((report) =>
+        reportTab === 'all' ||
+        (reportTab === 'emergency'
+            ? report.handledBy === 'bpbd'
+            : report.handledBy === 'community')
+    );
 
-  function routeWithFeedback(message, destination) {
+  function routeWithFeedback(message) {
     setRoutingNotice(message);
-    window.setTimeout(() => router.push(destination), 550);
   }
 
   function rerouteAndReview(reportId, route) {
     rerouteReport(reportId, route);
     routeWithFeedback(
       route === "emergency"
-        ? "Laporan berhasil dipindahkan ke antrean darurat."
-        : "Laporan berhasil dipindahkan ke Jalur B.",
-      route === "emergency" ? "/admin/ai-assistant?queue=emergency" : "/admin/actions/savings"
+        ? "Laporan berhasil dipindahkan ke Jalur Darurat."
+        : "Laporan berhasil dipindahkan ke Jalur Komunitas.",
     );
   }
 
   function acceptReport(report) {
-    rerouteReport(report.id, "community");
-    routeWithFeedback("Laporan diterima dan masuk ke Tabungan Aksi.", "/admin/actions/savings");
-  }
+    reviewDashboardReport(report.id);
+        setRoutingNotice('Laporan Berhasil Diterima.')
+}
+
+function rejectDashboardReport(report) {
+    setRejectingReport(report);
+    setRejectionReason('');
+}
+
+function confirmRejectReport() {
+    if (!rejectingReport || !rejectionReason.trim()) return;
+
+    rejectReport(rejectingReport.id, rejectionReason.trim());
+    setRejectingReport(null);
+    setRejectionReason('');
+    setRoutingNotice('Laporan warga berhasil ditolak.');
+}
+
+function overrideReport(report) {
+    const currentRoute =
+        report.handledBy === 'bpbd' ? 'emergency' : 'community';
+
+    const destinationRoute =
+        currentRoute === 'emergency' ? 'community' : 'emergency';
+
+    rerouteAndReview(report.id, destinationRoute);
+}
 
   return (
     <div className="mx-auto max-w-7xl space-y-7">
@@ -163,10 +186,6 @@ export default function AdminDashboard() {
           </div>
 
           <div className="divide-y divide-slate-100">
-            {filteredReports.length === 0 && (
-              <p className="p-5 text-sm font-semibold text-slate-500">Belum ada laporan.</p>
-            )}
-
             {filteredReports.map((report) => {
               const emergency = report.urgency >= 7;
               const expanded = expandedReportId === report.id;
@@ -207,34 +226,50 @@ export default function AdminDashboard() {
                     </div>
 
                     <div className="grid shrink-0 gap-2 sm:w-44">
-                      {emergency ? (
-                        <button
-                          type="button"
-                          onClick={() => rerouteAndReview(report.id, "emergency")}
-                          className="inline-flex items-center justify-center gap-1 rounded-xl bg-red-600 px-3 py-3 text-xs font-black text-white transition-all hover:bg-red-700 active:scale-95"
-                        >
-                          Tinjau Laporan <ChevronRight className="h-3.5 w-3.5" />
-                        </button>
+                      {report.dashboardDecision === 'accepted' ||
+report.dashboardDecision === 'overridden' ? (
+    <button
+        type="button"
+        onClick={() => router.push(
+            report.handledBy === 'bpbd'
+                ? '/admin/ai-assistant?queue=emergency'
+                : '/admin/actions/savings'
+        )}
+        className="w-full rounded-lg bg-brand px-3 py-2.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-brand-dark"
+    >
+        {report.handledBy === 'bpbd'
+            ? 'Lihat Laporan di Jalur A'
+            : 'Lihat di Tabungan Aksi'}
+    </button>
                       ) : (
                         <>
-                          <button
-                            type="button"
-                            onClick={() => acceptReport(report)}
-                            className="inline-flex items-center justify-center gap-1 rounded-xl bg-brand px-3 py-2.5 text-xs font-black text-white transition-all hover:bg-brand-dark active:scale-95"
-                          >
-                            Terima / Lihat Tabungan <ChevronRight className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => rerouteAndReview(report.id, "emergency")}
-                            className="inline-flex items-center justify-center rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-black text-red-700 transition-all hover:bg-red-50 active:scale-95"
-                          >
-                            Eskalasi ke Darurat
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
+        <button
+            type="button"
+            onClick={() => acceptReport(report)}
+            className="w-full rounded-lg bg-brand px-3 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-brand-dark"
+        >
+            Terima
+        </button>
+
+        <button
+            type="button"
+            onClick={() => rejectDashboardReport(report)}
+            className="w-full rounded-lg bg-red-600 px-3 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-red-700"
+        >
+            Tolak
+        </button>
+
+        <button
+            type="button"
+            onClick={() => overrideReport(report)}
+            className="w-full rounded-lg bg-amber-500 px-3 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-amber-600"
+        >
+            Override ke {report.handledBy === 'bpbd' ? 'Jalur B' : 'Jalur A'}
+        </button>
+    </>
+)}
+</div>
+</div>
 
                   {expanded && (
                     <div className="grid gap-4 border-t border-slate-100 bg-slate-50 p-5 sm:grid-cols-2">
@@ -261,20 +296,58 @@ export default function AdminDashboard() {
       </section>
 
       {routingNotice && (
-        <div
-          className="fixed right-4 top-20 z-50 flex max-w-sm items-start gap-3 rounded-xl border border-brand-light bg-white p-4 shadow-xl"
-          role="status"
-          aria-live="polite"
-        >
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-light text-brand">
-            <CheckCircle2 className="h-4 w-4" />
-          </span>
-          <div>
-            <p className="text-xs font-black text-slate-900">Routing berhasil</p>
-            <p className="mt-1 text-xs leading-relaxed text-slate-500">{routingNotice}</p>
-          </div>
+                <div className="fixed right-4 top-20 z-50 flex max-w-sm items-start gap-3 rounded-xl border border-brand-light bg-white p-4 shadow-xl" role="status" aria-live="polite">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-light text-brand"><CheckCircle2 className="h-4 w-4"/></span>
+                    <div>
+                        <p className="text-xs font-black text-slate-900">Routing berhasil</p>
+                        <p className="mt-1 text-xs leading-relaxed text-slate-500">{routingNotice}</p>
+                    </div>
+                </div>
+            )}
+            {rejectingReport && (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4">
+        <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <h2 className="text-lg font-black text-slate-900">
+                Tolak Laporan
+            </h2>
+
+            <p className="mt-2 text-sm text-slate-500">
+                Berikan alasan penolakan untuk laporan
+                {' '}{rejectingReport.id}.
+            </p>
+
+            <textarea
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                placeholder="Tuliskan alasan penolakan..."
+                rows={4}
+                className="mt-4 w-full rounded-xl border border-slate-200 p-3 text-sm text-slate-700 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+
+            <div className="mt-5 flex justify-end gap-2">
+                <button
+                    type="button"
+                    onClick={() => {
+                        setRejectingReport(null);
+                        setRejectionReason('');
+                    }}
+                    className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                >
+                    Batal
+                </button>
+
+                <button
+                    type="button"
+                    disabled={!rejectionReason.trim()}
+                    onClick={confirmRejectReport}
+                    className="rounded-lg bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                    Konfirmasi Penolakan
+                </button>
+            </div>
         </div>
-      )}
     </div>
-  );
+)}
+        </div>
+    );
 }

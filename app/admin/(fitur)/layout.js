@@ -3,6 +3,7 @@ import { AdminProvider } from "@/context/AdminContext";
 import { ReportProvider } from "@/context/ReportContext";
 import AdminShell from "@/components/admin/AdminShell";
 import { getAdminSession } from "@/lib/auth/admin";
+import AdminNotifications from "@/components/admin/AdminNotifications";
 
 export default async function AdminPanelLayout({ children }) {
   const admin = await getAdminSession();
@@ -11,7 +12,9 @@ export default async function AdminPanelLayout({ children }) {
   return (
     <AdminProvider admin={admin}>
       <ReportProvider>
-        <AdminShell>{children}</AdminShell>
+        <AdminShell>
+          {children}
+        </AdminShell>
       </ReportProvider>
     </AdminProvider>
   );

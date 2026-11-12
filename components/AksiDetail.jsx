@@ -415,7 +415,7 @@ function StepPanduan({ a, agree, setAgree }) {
           Saya sudah membaca panduan keselamatan
         </label>
       )}
-      {!a.joined && a.status !== 'selesai' && <p className="text-sm text-[#4B5563]">Ini pratinjau. Ketuk "Ikut Aksi Ini" untuk membuka langkah Tugas dan Progres.</p>}
+      {!a.joined && a.status !== 'selesai' && <p className="text-sm text-[#4B5563]">Ini pratinjau. Ketuk &quot;Ikut Aksi Ini&quot; untuk membuka langkah Tugas dan Progres.</p>}
     </div>
   );
 }

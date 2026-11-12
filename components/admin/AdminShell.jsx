@@ -158,6 +158,7 @@ export default function AdminShell({ children }) {
 
           <div className="flex items-center gap-2">
             <AdminNotifications />
+            
             <div className="flex items-center gap-2 border-l border-slate-200 pl-3">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-black text-white">
                 {admin.initials}
