@@ -86,8 +86,8 @@ export default function Footer() {
             </li>
             <li className="flex items-center gap-2.5">
               <Mail className="h-4 w-4 shrink-0 text-brand" aria-hidden="true" />
-              <a href="mailto:halo@paras.id" className="hover:text-brand">
-                halo@paras.id
+              <a href="mailto:parasapp.company@gmail.com" className="hover:text-brand">
+                parasapp.company@gmail.com
               </a>
             </li>
             <li className="flex items-start gap-2.5">
@@ -101,7 +101,7 @@ export default function Footer() {
       {/* Bar bawah */}
       <div className="border-t border-border">
         <div className="mx-auto flex max-w-5xl flex-col gap-3 px-5 py-5 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between lg:px-8">
-          <p>© {new Date().getFullYear()} PARAS. Hak cipta dilindungi.</p>
+          {/* <p>© {new Date().getFullYear()} PARAS. Hak cipta dilindungi.</p> */}
           <div className="flex flex-wrap gap-x-5 gap-y-2">
             {legalLinks.map((label) => (
               <a key={label} href="#" className="hover:text-brand">

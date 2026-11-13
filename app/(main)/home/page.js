@@ -26,157 +26,40 @@ export default function Home() {
   });
 
   // Fetch profil asli dan data statistik dari Supabase saat load awal
-  useEffect(() => {
-    const fetchHomeData = async () => {
-      try {
-        const supabase = createClient();
-        const { data: { user }, error: authError } = await supabase.auth.getUser();
+useEffect(() => {
+  const controller = new AbortController();
 
-        if (authError || !user) {
-          router.push('/login');
-          return;
-        }
+  const fetchHomeData = async () => {
+    try {
+      const res = await fetch('/api/home', {
+        cache: 'no-store',
+        signal: controller.signal,
+      });
 
-        // 1. Ambil data profil & regions
-        const { data: dataProfile, error } = await supabase
-          .from('profiles')
-          .select('*, regions(*)')
-          .eq('user_id', user.id)
-          .maybeSingle();
-
-        if (dataProfile && !error) {
-          const kelurahan = dataProfile.regions?.subdistrict || '';
-          const kecamatan = dataProfile.regions?.district || '';
-          const city = dataProfile.regions?.city || '';
-          
-          const formattedArea = kelurahan 
-            ? `${kelurahan}, ${kecamatan}, ${city}` 
-            : 'Atur lokasi domisili';
-
-          setProfileData({
-            displayName: dataProfile.full_name || user.user_metadata?.full_name || 'Warga PARAS',
-            areaFull: formattedArea,
-          });
-        } else {
-          setProfileData({
-            displayName: user.user_metadata?.full_name || 'Warga PARAS',
-            areaFull: 'Atur lokasi domisili',
-          });
-        }
-
-        // 2. Ambil data partisipasi aksi user dari Supabase
-        const { data: partRecords } = await supabase
-          .from('action_participants')
-          .select('*, community_actions(*)')
-          .eq('user_id', user.id)
-          .order('joined_at', { ascending: false });
-
-        let completedCount = 0;
-        let userPoints = 0;
-        let userStreak = 0;
-        let ongoingAction = null;
-
-        if (partRecords && partRecords.length > 0) {
-          const participationIds = partRecords
-            .map((p) => p.participation_id)
-            .filter(Boolean);
-
-          // Ambil seluruh checklist yang sudah dicentang user beserta poinnya dari action_tasks
-          let progressRecords = [];
-          if (participationIds.length > 0) {
-            const { data: progData } = await supabase
-              .from('action_task_progress')
-              .select('participation_id, action_task_id, action_tasks(points)')
-              .in('participation_id', participationIds);
-
-            progressRecords = progData || [];
-          }
-
-          // Hitung total poin murni dari checklist yang sudah selesai dicentang
-          userPoints = progressRecords.reduce((sum, item) => {
-            const pts = Number(item.action_tasks?.points);
-            return sum + (!Number.isNaN(pts) && pts > 0 ? pts : 10);
-          }, 0);
-
-          // Hitung jumlah aksi yang sudah selesai + persentase progress per aksi berdasarkan checklist
-          const enrichedParts = await Promise.all(
-            partRecords.map(async (p) => {
-              let st = String(p.completion_action_status || '').trim().toLowerCase();
-              let isDone = st === 'selesai' || st === 'done' || st === 'completed';
-
-              // Cek bukti foto jika status belum tertulis selesai
-              if (!isDone && p.participation_id) {
-                const { data: proofData } = await supabase
-                  .from('action_completion_proofs')
-                  .select('photo_path')
-                  .eq('participation_id', p.participation_id)
-                  .maybeSingle();
-
-                if (proofData && proofData.photo_path) {
-                  const path = String(proofData.photo_path).trim();
-                  if (
-                    path.startsWith('data:image/') ||
-                    path.startsWith('http://') ||
-                    path.startsWith('https://')
-                  ) {
-                    isDone = true;
-                  }
-                }
-              }
-
-              // Hitung persentase progress dari checklist yang dicentang vs total langkah aksi
-              const { count: totalTasks } = await supabase
-                .from('action_tasks')
-                .select('*', { count: 'exact', head: true })
-                .eq('action_id', p.action_id);
-
-              const checkedForThis = progressRecords.filter(
-                (pr) => pr.participation_id === p.participation_id
-              ).length;
-
-              const progressPct = isDone
-                ? 100
-                : totalTasks && totalTasks > 0
-                ? Math.round((checkedForThis / totalTasks) * 100)
-                : 0;
-
-              return { ...p, isDone, progressPct };
-            })
-          );
-
-          completedCount = enrichedParts.filter((p) => p.isDone).length;
-          userStreak = progressRecords.length > 0 || completedCount > 0 ? 1 : 0;
-
-          // Prioritaskan aksi yang masih berjalan; jika semua selesai, tampilkan aksi terbaru yang selesai
-          const targetPart = enrichedParts.find((p) => !p.isDone) || enrichedParts[0];
-
-          if (targetPart && targetPart.community_actions) {
-            ongoingAction = {
-              id: targetPart.community_actions.action_id,
-              title: targetPart.community_actions.action_title,
-              achieved: targetPart.progressPct,
-              target: 100,
-              isDone: targetPart.isDone,
-            };
-          }
-        }
-
-        setHomeStats({
-          points: userPoints,
-          streak: userStreak,
-          completedCount: completedCount,
-          activeAction: ongoingAction,
-        });
-
-      } catch (err) {
-        console.error('Gagal memuat data beranda:', err);
-      } finally {
-        setLoading(false);
+      if (res.status === 401) {
+        router.push('/login');
+        return;
       }
-    };
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-    fetchHomeData();
-  }, [router]);
+      const data = await res.json();
+      setProfileData({
+        displayName: data.displayName,
+        areaFull: data.areaFull || 'Wilayah belum diatur',
+      });
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        console.error('Gagal memuat data beranda:', err);
+        setProfileData({ displayName: 'Warga PARAS', areaFull: 'Wilayah belum diatur' });
+      }
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
+    }
+  };
+
+  fetchHomeData();
+  return () => controller.abort();
+}, [router]);
 
   // Hitung laporan milik user yang sedang diproses
   const mine = reports.filter((r) => r.reporter === profileData.displayName);
@@ -260,7 +143,7 @@ export default function Home() {
       <div className="mx-auto w-full max-w-5xl space-y-4 px-4 py-6 lg:space-y-6 lg:px-10 lg:py-8 -mt-6 relative z-10">
         {/* Banner Cuaca (Peringatan Dini) */}
         <Link href="/info" className="block group">
-          <Card className="border-orange-200 bg-orange-50/80 backdrop-blur-sm shadow-sm transition-all hover:shadow-md hover:bg-orange-100/80">
+          <Card className="border-orange-200 bg-orange-50/80 backdrop-blur-sm shadow-sm transition-all hover:shadow-md hover:bg-orange-100/80 rounded-lg">
             <CardContent className="flex items-center gap-4 p-4 lg:p-5">
               <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-orange-200 text-orange-700">
                 <AlertTriangle className="h-6 w-6" aria-hidden />
@@ -279,7 +162,7 @@ export default function Home() {
 
         {/* Tombol Aksi Utama (Buat Laporan) - Magenta Pink */}
         <Link href="/chatbot" className="block group">
-          <Card className="border-none bg-[#E6008A] text-white shadow-lg shadow-pink-500/20 transition-transform hover:-translate-y-0.5">
+          <Card className="border-none bg-[#E6008A] text-white shadow-lg shadow-pink-500/20 transition-transform hover:-translate-y-0.5 rounded-lg">
             <CardContent className="flex items-center gap-4 p-4 lg:p-5">
               <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm">
                 <MessageCircle className="h-6 w-6 text-white" aria-hidden />
@@ -297,7 +180,7 @@ export default function Home() {
         <nav aria-label="Ringkasan Aktivitas" className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 lg:gap-5 pt-2">
           {tiles.map((t) => (
             <Link key={t.label} href={t.to} className="block group h-full">
-              <Card className="h-full transition-all hover:shadow-md border-gray-200/60 hover:border-gray-300">
+              <Card className="h-full transition-all hover:shadow-md border-gray-200/60 hover:border-gray-300 rounded-lg">
                 <CardContent className="flex flex-col p-5">
                   <div className="flex items-center justify-between">
                     <ChevronRight className="h-4 w-4 text-gray-400 transition-transform group-hover:translate-x-1" aria-hidden />

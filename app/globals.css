@@ -86,7 +86,7 @@
   --accent-foreground: #b3006b;
 
   --muted: #f3f4f6;
-  --muted-foreground: #4b5563; /* kontras AA di atas putih dan muted */
+  --muted-foreground: #4b5563;
   --destructive: #dc2626;
 
   --border: #e5e7eb;
@@ -112,7 +112,6 @@
   --sidebar-ring: #159038;
 }
 
-/* PRD tidak mendefinisikan dark mode; blok ini dijaga agar komponen shadcn tetap aman */
 .dark {
   --background: #0b1210;
   --foreground: #f8f9fa;
@@ -153,13 +152,11 @@
     @apply font-sans;
   }
 
-  /* PRD: target sentuh minimal 44x44px */
   button,
   [role="button"],
   a.btn {
     min-height: 44px;
   }
-  /* Ikon-saja di dalam input (tombol mata) tidak perlu dipaksa 44px tinggi penuh */
   .relative > button[type="button"] {
     min-height: 0;
   }

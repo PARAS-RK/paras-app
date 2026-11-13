@@ -1,11 +1,14 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import Link from 'next/link';
-import { Send, Paperclip, X, CheckCircle2, FileText, Image as ImageIcon, ArrowRight, MessageCircle, MapPin, Lock, Loader2 } from 'lucide-react';
-import { cn } from '../../../lib/utils';
-import { useReportContext } from '../../../context/ReportContext';
-import { createClient } from '../../../lib/supabase/client';
+import { useState, useRef } from 'react';
+import Link from 'next/link'; // Mengubah react-router menjadi next/link
+import { Send, Paperclip, X, CheckCircle2, FileText, Image as ImageIcon, ArrowRight, MessageCircle, MapPin, Lock } from 'lucide-react'; // Mengubah 'Image' menjadi 'ImageIcon' untuk menghindari konflik
+import { cn } from '@/lib/utils';
+
+// Karena ini komponen client, mock data sementara atau ambil dari store/konteks
+const displayName = "Ibu Sari Wulandari";
+const areaLabel = "Kel. Kebayoran Baru";
+const areaFull = "Kel. Kebayoran Baru, Jakarta Selatan";
 
 export default function Lapor() {
     const { addReport } = useReportContext(); // Mengambil fungsi penambahan laporan global
