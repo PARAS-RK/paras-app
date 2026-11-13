@@ -10,7 +10,7 @@ const notoSans = Noto_Sans({
 
 export const metadata = {
   title: 'PARAS',
-  description: 'Platform komunitas Perempuan dan aksiIklim',
+  description: 'Platform komunitas Perempuan dan aksi Iklim',
 };
 
 export default function RootLayout({ children }) {

@@ -35,7 +35,8 @@ const setCelebrate = (id) => {
   celebrateId = id;
   listeners.forEach((l) => l());
 };
-const useCelebrate = () => useSyncExternalStore(subscribe, () => celebrateId);
+// Kode baru (tambahkan () => null di parameter ketiga):
+const useCelebrate = () => useSyncExternalStore(subscribe, () => celebrateId, () => null);
 
 /* Demo: add the points needed to unlock the next badge. */
 export function demoUnlockBadge(points) {
