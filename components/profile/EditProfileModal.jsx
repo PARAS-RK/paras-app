@@ -8,7 +8,7 @@ export default function EditProfileModal({ isOpen, onClose, currentProfile, onSu
   const [name, setName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [email, setEmail] = useState('');
-  
+
   const [avatarUrl, setAvatarUrl] = useState('');
   const [avatarFile, setAvatarFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState('');
@@ -23,7 +23,7 @@ export default function EditProfileModal({ isOpen, onClose, currentProfile, onSu
   const [selectedRegencyId, setSelectedRegencyId] = useState('');
   const [selectedDistrictId, setSelectedDistrictId] = useState('');
   const [selectedVillageId, setSelectedVillageId] = useState('');
-  
+
   const [provinceName, setProvinceName] = useState('');
   const [cityName, setCityName] = useState('');
   const [kecamatan, setKecamatan] = useState('');
@@ -76,6 +76,7 @@ export default function EditProfileModal({ isOpen, onClose, currentProfile, onSu
     }
   }, [selectedDistrictId]);
 
+  // Isi nilai awal saat modal dibuka
   useEffect(() => {
     if (currentProfile && isOpen) {
       setName(currentProfile.full_name || '');
@@ -101,6 +102,45 @@ export default function EditProfileModal({ isOpen, onClose, currentProfile, onSu
       }
     }
   }, [currentProfile, isOpen, provinces]);
+
+  // Auto-match Kota/Kabupaten
+  useEffect(() => {
+    if (isOpen && currentProfile?.city && regencies.length > 0 && !selectedRegencyId) {
+      const foundReg = regencies.find(
+        (r) => r.name.toLowerCase() === currentProfile.city.toLowerCase()
+      );
+      if (foundReg) {
+        setSelectedRegencyId(foundReg.id);
+        setCityName(foundReg.name);
+      }
+    }
+  }, [regencies, currentProfile, isOpen, selectedRegencyId]);
+
+  // Auto-match Kecamatan
+  useEffect(() => {
+    if (isOpen && currentProfile?.kecamatan && districts.length > 0 && !selectedDistrictId) {
+      const foundDist = districts.find(
+        (d) => d.name.toLowerCase() === currentProfile.kecamatan.toLowerCase()
+      );
+      if (foundDist) {
+        setSelectedDistrictId(foundDist.id);
+        setKecamatan(foundDist.name);
+      }
+    }
+  }, [districts, currentProfile, isOpen, selectedDistrictId]);
+
+  // Auto-match Kelurahan
+  useEffect(() => {
+    if (isOpen && currentProfile?.kelurahan && villages.length > 0 && !selectedVillageId) {
+      const foundVil = villages.find(
+        (v) => v.name.toLowerCase() === currentProfile.kelurahan.toLowerCase()
+      );
+      if (foundVil) {
+        setSelectedVillageId(foundVil.id);
+        setKelurahan(foundVil.name);
+      }
+    }
+  }, [villages, currentProfile, isOpen, selectedVillageId]);
 
   if (!isOpen) return null;
 
@@ -128,6 +168,7 @@ export default function EditProfileModal({ isOpen, onClose, currentProfile, onSu
 
       if (userError || !user) throw new Error('Pengguna tidak terautentikasi.');
 
+      // 1. Upload avatar jika user memilih foto baru
       let uploadedAvatarUrl = avatarUrl;
       if (avatarFile) {
         const fileExt = avatarFile.name.split('.').pop();
@@ -141,7 +182,8 @@ export default function EditProfileModal({ isOpen, onClose, currentProfile, onSu
         uploadedAvatarUrl = publicUrlData.publicUrl;
       }
 
-      let targetRegionId = null;
+      // 2. Cari region_id yang sudah ada di tabel regions (hanya SELECT, tidak mengubah tabel regions)
+      let targetRegionId = currentProfile?.region_id || null;
       if (selectedVillageId) {
         let { data: existingRegion } = await supabase
           .from('regions')
@@ -161,29 +203,11 @@ export default function EditProfileModal({ isOpen, onClose, currentProfile, onSu
 
         if (existingRegion) {
           targetRegionId = existingRegion.region_id;
-        } else {
-          const { data: newRegion, error: regError } = await supabase
-            .from('regions')
-            .insert({
-              province_code: selectedProvinceId,
-              province: provinceName,
-              city_code: selectedRegencyId,
-              city: cityName,
-              district_code: selectedDistrictId,
-              district: kecamatan,
-              subdistrict_code: selectedVillageId,
-              subdistrict: kelurahan,
-            })
-            .select('region_id')
-            .single();
-
-          if (regError) throw new Error('Gagal menyimpan wilayah baru: ' + regError.message);
-          if (newRegion) targetRegionId = newRegion.region_id;
         }
       }
 
-      const profilePayload = {
-        user_id: user.id,
+      // 3. Langsung UPDATE tabel profiles (termasuk rt dan rw)
+      const updatePayload = {
         full_name: name,
         phone_number: phoneNumber,
         avatar_url: uploadedAvatarUrl,
@@ -191,34 +215,21 @@ export default function EditProfileModal({ isOpen, onClose, currentProfile, onSu
         rw: rw,
       };
 
-      if (targetRegionId) profilePayload.region_id = parseInt(targetRegionId, 10);
-
-      // Cek manual menggunakan .select() dan .eq() terpisah
-      const { data: existingProfile } = await supabase
-        .from('profiles')
-        .select('user_id')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      let saveError;
-      if (existingProfile) {
-        const { error } = await supabase
-          .from('profiles')
-          .update(profilePayload)
-          .eq('user_id', user.id);
-        saveError = error;
-      } else {
-        const { error } = await supabase
-          .from('profiles')
-          .insert([profilePayload]);
-        saveError = error;
+      if (targetRegionId) {
+        updatePayload.region_id = parseInt(targetRegionId, 10);
       }
+
+      const { error: saveError } = await supabase
+        .from('profiles')
+        .update(updatePayload)
+        .eq('user_id', user.id);
 
       if (saveError) {
         throw new Error('Gagal menyimpan profil: ' + saveError.message);
       }
 
-      if (email !== currentProfile.email) {
+      // 4. Update email jika berubah
+      if (email && email !== currentProfile?.email) {
         const { error: emailError } = await supabase.auth.updateUser({ email });
         if (emailError) throw emailError;
       }
@@ -230,6 +241,7 @@ export default function EditProfileModal({ isOpen, onClose, currentProfile, onSu
           phone_number: phoneNumber,
           email: email,
           avatar_url: uploadedAvatarUrl,
+          region_id: targetRegionId,
           city: cityName,
           kecamatan: kecamatan,
           kelurahan: kelurahan,
@@ -324,7 +336,7 @@ export default function EditProfileModal({ isOpen, onClose, currentProfile, onSu
 
           <div className="rounded-2xl border border-border bg-muted/20 p-4 space-y-3">
             <h4 className="text-xs font-black uppercase tracking-widest text-foreground">Lokasi Domisili</h4>
-            
+
             <div>
               <label className="mb-1 block text-xs font-bold text-foreground">Provinsi</label>
               <select

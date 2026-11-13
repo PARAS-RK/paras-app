@@ -68,7 +68,8 @@ export default function Home() {
         const { data: partRecords } = await supabase
           .from('action_participants')
           .select('*, community_actions(*)')
-          .eq('user_id', user.id);
+          .eq('user_id', user.id)
+          .order('joined_at', { ascending: false });
 
         let completedCount = 0;
         let userPoints = 0;
@@ -76,30 +77,88 @@ export default function Home() {
         let ongoingAction = null;
 
         if (partRecords && partRecords.length > 0) {
-          completedCount = partRecords.length;
-          userPoints = completedCount * 30; // 30 poin per aksi
-          userStreak = 1;
+          const participationIds = partRecords
+            .map((p) => p.participation_id)
+            .filter(Boolean);
 
-          // Ambil aksi pertama yang sedang diikuti sebagai "Aksi Saya"
-          const firstPart = partRecords[0];
-          if (firstPart && firstPart.community_actions) {
-            // Menghitung progress secara dinamis berdasarkan status penyelesaian
-            const status = String(firstPart.completion_action_status || '').trim().toLowerCase();
-            const progressVal = status === 'selesai' || status === 'done' ? 100 : 50;
+          // Ambil seluruh checklist yang sudah dicentang user beserta poinnya dari action_tasks
+          let progressRecords = [];
+          if (participationIds.length > 0) {
+            const { data: progData } = await supabase
+              .from('action_task_progress')
+              .select('participation_id, action_task_id, action_tasks(points)')
+              .in('participation_id', participationIds);
 
+            progressRecords = progData || [];
+          }
+
+          // Hitung total poin murni dari checklist yang sudah selesai dicentang
+          userPoints = progressRecords.reduce((sum, item) => {
+            const pts = Number(item.action_tasks?.points);
+            return sum + (!Number.isNaN(pts) && pts > 0 ? pts : 10);
+          }, 0);
+
+          // Hitung jumlah aksi yang sudah selesai + persentase progress per aksi berdasarkan checklist
+          const enrichedParts = await Promise.all(
+            partRecords.map(async (p) => {
+              let st = String(p.completion_action_status || '').trim().toLowerCase();
+              let isDone = st === 'selesai' || st === 'done' || st === 'completed';
+
+              // Cek bukti foto jika status belum tertulis selesai
+              if (!isDone && p.participation_id) {
+                const { data: proofData } = await supabase
+                  .from('action_completion_proofs')
+                  .select('photo_path')
+                  .eq('participation_id', p.participation_id)
+                  .maybeSingle();
+
+                if (proofData && proofData.photo_path) {
+                  const path = String(proofData.photo_path).trim();
+                  if (
+                    path.startsWith('data:image/') ||
+                    path.startsWith('http://') ||
+                    path.startsWith('https://')
+                  ) {
+                    isDone = true;
+                  }
+                }
+              }
+
+              // Hitung persentase progress dari checklist yang dicentang vs total langkah aksi
+              const { count: totalTasks } = await supabase
+                .from('action_tasks')
+                .select('*', { count: 'exact', head: true })
+                .eq('action_id', p.action_id);
+
+              const checkedForThis = progressRecords.filter(
+                (pr) => pr.participation_id === p.participation_id
+              ).length;
+
+              const progressPct = isDone
+                ? 100
+                : totalTasks && totalTasks > 0
+                ? Math.round((checkedForThis / totalTasks) * 100)
+                : 0;
+
+              return { ...p, isDone, progressPct };
+            })
+          );
+
+          completedCount = enrichedParts.filter((p) => p.isDone).length;
+          userStreak = progressRecords.length > 0 || completedCount > 0 ? 1 : 0;
+
+          // Prioritaskan aksi yang masih berjalan; jika semua selesai, tampilkan aksi terbaru yang selesai
+          const targetPart = enrichedParts.find((p) => !p.isDone) || enrichedParts[0];
+
+          if (targetPart && targetPart.community_actions) {
             ongoingAction = {
-              id: firstPart.community_actions.action_id,
-              title: firstPart.community_actions.action_title,
-              achieved: progressVal, 
+              id: targetPart.community_actions.action_id,
+              title: targetPart.community_actions.action_title,
+              achieved: targetPart.progressPct,
               target: 100,
+              isDone: targetPart.isDone,
             };
           }
-        }
-
-        // Sinkronkan dengan kolom points/streak di profiles jika ada
-        if (dataProfile) {
-          if (dataProfile.points > userPoints) userPoints = dataProfile.points;
-          if (dataProfile.streak > userStreak) userStreak = dataProfile.streak;
         }
 
         setHomeStats({
@@ -133,7 +192,7 @@ export default function Home() {
           icon: Leaf,
           tone: 'text-[#159038] bg-[#159038]/10',
           label: 'Aksi Saya',
-          value: `${pct(current.achieved, current.target)}%`,
+          value: current.isDone ? 'Selesai' : `${pct(current.achieved, current.target)}%`,
           sub: current.title,
           bar: pct(current.achieved, current.target),
           barColor: 'bg-[#159038]',

@@ -70,6 +70,14 @@ export default function Register() {
   const [showPass, setShowPass] = useState(false)
   const [otp, setOtp] = useState(['', '', '', '', '', ''])
 
+  // Loading & feedback states
+  const [submitting, setSubmitting] = useState(false)
+  const [verifying, setVerifying] = useState(false)
+  const [resending, setResending] = useState(false)
+  const [authError, setAuthError] = useState('')
+  const [otpError, setOtpError] = useState('')
+  const [otpInfo, setOtpInfo] = useState('')
+
   // Dynamic region state
   const [provinces, setProvinces] = useState([])
   const [regencies, setRegencies] = useState([])
@@ -148,19 +156,19 @@ export default function Register() {
     }
   }
 
- const handleGoogleSignIn = async () => {
-  try {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    })
-    if (error) throw error
-  } catch (err) {
-    console.error('Error logging in with Google:', err.message)
+  const handleGoogleSignIn = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      })
+      if (error) throw error
+    } catch (err) {
+      console.error('Error logging in with Google:', err.message)
+    }
   }
-}
 
   const handleProvinceChange = (e) => {
     const selectedName = e.target.value
@@ -252,20 +260,117 @@ export default function Register() {
     return e
   }
 
-  function handleSubmit(ev) {
+  // Kirim pendaftaran ke Supabase Auth sehingga email OTP otomatis terkirim
+  async function handleSubmit(ev) {
     ev.preventDefault()
+    setAuthError('')
     const e = validate()
     if (Object.keys(e).length) {
       setErrors(e)
       return
     }
-    setStep('otp')
+
+    setSubmitting(true)
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: form.email.trim(),
+        password: form.password,
+        options: {
+          data: {
+            full_name: form.name.trim(),
+            phone_number: form.phone.trim(),
+            account_category: accountType === 'pkk' ? 'PKK' : 'Umum',
+            province: form.province,
+            city: form.city,
+            district: form.kecamatan,
+            subdistrict: form.generalKelurahan,
+          },
+        },
+      })
+
+      if (error) throw error
+
+      // Jika email sudah terdaftar dan terkonfirmasi sebelumnya, Supabase mengembalikan identities kosong
+      if (data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        setAuthError('Email ini sudah terdaftar. Silakan langsung masuk melalui halaman Login.')
+        return
+      }
+
+      setOtp(['', '', '', '', '', ''])
+      setOtpError('')
+      setOtpInfo('')
+      setStep('otp')
+    } catch (err) {
+      console.error('Error signUp:', err)
+      setAuthError(err.message || 'Gagal mendaftar & mengirim kode OTP ke email.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Verifikasi 6 digit kode OTP ke Supabase
+  async function handleVerifyOtp() {
+    const token = otp.join('')
+    if (token.length < 6 || verifying) return
+
+    setVerifying(true)
+    setOtpError('')
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        email: form.email.trim(),
+        token,
+        type: 'signup',
+      })
+
+      if (error) throw error
+
+      setRegistrationId(
+        submitRegistration({
+          name: form.name.trim(),
+          email: form.email.trim(),
+          phone: form.phone.trim(),
+          type: accountType,
+          province: form.province,
+          city: form.city,
+          kecamatan: form.kecamatan,
+          kelurahan: `Kel. ${form.generalKelurahan}`,
+        })
+      )
+      setStep('done')
+    } catch (err) {
+      console.error('Error verifyOtp:', err)
+      setOtpError(err.message || 'Kode OTP tidak valid atau sudah kedaluwarsa.')
+    } finally {
+      setVerifying(false)
+    }
+  }
+
+  // Kirim ulang kode OTP
+  async function handleResendOtp() {
+    if (resending) return
+    setResending(true)
+    setOtpError('')
+    setOtpInfo('')
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: form.email.trim(),
+      })
+      if (error) throw error
+      setOtpInfo('Kode verifikasi baru telah dikirim ke email Anda.')
+    } catch (err) {
+      console.error('Error resend OTP:', err)
+      setOtpError(err.message || 'Gagal mengirim ulang kode OTP. Tunggu sebentar lalu coba lagi.')
+    } finally {
+      setResending(false)
+    }
   }
 
   function handleOtpChange(i, val) {
     const next = [...otp]
     next[i] = val.slice(-1)
     setOtp(next)
+    setOtpError('')
     if (val && i < 5) document.getElementById(`otp-${i + 1}`)?.focus()
   }
 
@@ -276,10 +381,23 @@ export default function Register() {
           <Mail className="text-brand h-8 w-8" />
         </div>
         <h2 className="text-foreground mb-2 text-center text-2xl font-black">Verifikasi Email</h2>
-        <p className="text-muted-foreground mb-8 text-center text-sm leading-relaxed">
+        <p className="text-muted-foreground mb-6 text-center text-sm leading-relaxed">
           Masukkan kode 6 digit yang kami kirim ke{' '}
           <span className="text-foreground font-bold">{form.email}</span>
         </p>
+
+        {otpError && (
+          <div role="alert" className="mb-4 w-full max-w-xs rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-center text-xs font-semibold text-red-600">
+            {otpError}
+          </div>
+        )}
+
+        {otpInfo && (
+          <div role="status" className="border-brand-light bg-brand-xlight text-brand-dark mb-4 w-full max-w-xs rounded-xl border px-3.5 py-2.5 text-center text-xs font-semibold">
+            {otpInfo}
+          </div>
+        )}
+
         <div className="mb-8 flex gap-2">
           {otp.map((digit, i) => (
             <input
@@ -300,29 +418,27 @@ export default function Register() {
           ))}
         </div>
         <button
-          onClick={() => {
-            if (otp.join('').length < 6) return
-            setRegistrationId(
-              submitRegistration({
-                name: form.name.trim(),
-                email: form.email.trim(),
-                phone: form.phone.trim(),
-                type: accountType,
-                province: form.province,
-                city: form.city,
-                kecamatan: form.kecamatan,
-                kelurahan: `Kel. ${form.generalKelurahan}`,
-              })
-            )
-            setStep('done')
-          }}
-          disabled={otp.join('').length < 6}
-          className="bg-brand hover:bg-brand-dark mb-4 w-full rounded-xl py-3.5 font-black text-white transition-colors disabled:opacity-50"
+          type="button"
+          onClick={handleVerifyOtp}
+          disabled={otp.join('').length < 6 || verifying}
+          className="bg-brand hover:bg-brand-dark mb-4 flex w-full max-w-xs items-center justify-center gap-2 rounded-xl py-3.5 font-black text-white transition-colors disabled:opacity-50"
         >
-          Verifikasi
+          {verifying ? (
+            <>
+              <LoaderCircle className="h-4 w-4 animate-spin" /> Memverifikasi...
+            </>
+          ) : (
+            'Verifikasi'
+          )}
         </button>
-        <button className="text-muted-foreground text-sm">
-          Tidak menerima kode? <span className="text-pink font-bold">Kirim ulang</span>
+        <button
+          type="button"
+          onClick={handleResendOtp}
+          disabled={resending}
+          className="text-muted-foreground text-sm disabled:opacity-50"
+        >
+          Tidak menerima kode?{' '}
+          <span className="text-pink font-bold">{resending ? 'Mengirim...' : 'Kirim ulang'}</span>
         </button>
       </div>
     )
@@ -378,6 +494,12 @@ export default function Register() {
               <span className="text-muted-foreground text-xs">atau isi formulir</span>
               <div className="bg-border h-px flex-1" />
             </div>
+
+            {authError && (
+              <div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs font-semibold text-red-600">
+                {authError}
+              </div>
+            )}
 
             {/* Account type */}
             <div className="mb-5">
@@ -664,10 +786,18 @@ export default function Register() {
 
               <button
                 type="submit"
-                disabled={pkkBlocked}
+                disabled={pkkBlocked || submitting}
                 className="bg-brand hover:bg-brand-dark mt-2 flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-black text-white transition-colors disabled:cursor-not-allowed disabled:bg-slate-300"
               >
-                Daftar & Verifikasi Email <ArrowRight className="h-4 w-4" />
+                {submitting ? (
+                  <>
+                    <LoaderCircle className="h-4 w-4 animate-spin" /> Mengirim Kode OTP...
+                  </>
+                ) : (
+                  <>
+                    Daftar & Verifikasi Email <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
               </button>
             </form>
 

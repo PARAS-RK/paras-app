@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import { Award, Check, Leaf, Lock, Users } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -35,7 +35,6 @@ const setCelebrate = (id) => {
   celebrateId = id;
   listeners.forEach((l) => l());
 };
-// Kode baru (tambahkan () => null di parameter ketiga):
 const useCelebrate = () => useSyncExternalStore(subscribe, () => celebrateId, () => null);
 
 /* Demo: add the points needed to unlock the next badge. */
@@ -71,11 +70,13 @@ export function BadgeIcon({ badge, size = 48, state = 'unlocked', className }) {
   );
 }
 
-/* 1. Main badge progress card (replaces the level card). */
-export function BadgeProgressCard() {
-  const { points } = useAksiState();
+/* 1. Main badge progress card (menggunakan prop points dari Supabase, fallback ke store lokal). */
+export function BadgeProgressCard({ points: externalPoints }) {
+  const store = useAksiState();
+  const points = externalPoints !== undefined ? externalPoints : store.points;
   const { current, next } = badgeProgress(points);
   const shown = current || BADGES[0];
+
   return (
     <section className="rounded-2xl bg-white p-5 text-center shadow-[0_4px_16px_rgba(17,24,39,0.08)]" aria-label="Progres lencana">
       <BadgeIcon badge={shown} size={96} state={current ? 'unlocked' : 'next'} />
@@ -83,7 +84,7 @@ export function BadgeProgressCard() {
       {next ? (
         <>
           <div className="mx-auto mt-3 max-w-[260px]">
-            <ProgressBar value={Math.round((points / next.threshold) * 100)} label={`Menuju Lencana ${next.name}`} />
+            <ProgressBar value={Math.min(100, Math.round((points / next.threshold) * 100))} label={`Menuju Lencana ${next.name}`} />
           </div>
           <p className="mt-2 text-sm text-[#6B7280]">
             {points}/{next.threshold} poin menuju Lencana {next.name}
@@ -96,10 +97,12 @@ export function BadgeProgressCard() {
   );
 }
 
-/* 3. Profile badge collection. */
-export function BadgeCollectionCard({ className, headingClassName }) {
-  const { points } = useAksiState();
+/* 3. Profile badge collection (menggunakan prop points dari Supabase, fallback ke store lokal). */
+export function BadgeCollectionCard({ points: externalPoints, className, headingClassName }) {
+  const store = useAksiState();
+  const points = externalPoints !== undefined ? externalPoints : store.points;
   const { next } = badgeProgress(points);
+
   return (
     <section id="koleksi-lencana" className={cn('scroll-mt-24', className)} aria-labelledby="badge-h">
       <h2 id="badge-h" className={headingClassName}>

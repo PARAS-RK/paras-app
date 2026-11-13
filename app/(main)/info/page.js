@@ -408,7 +408,7 @@ export default function InfoCuacaPage() {
           namaWilayah = [subdistrict, district, city].filter(Boolean).join(', ');
         }
 
-        // Fetch data API BMKG
+        // Fetch data API BMKG secara real-time
         const [resGempaRasa, resGempaBesar] = await Promise.all([
           fetch('https://data.bmkg.go.id/DataMKG/TEWS/autogempa.json').catch(() => null),
           fetch('https://data.bmkg.go.id/DataMKG/TEWS/gempaterkini.json').catch(() => null)
