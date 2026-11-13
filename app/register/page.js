@@ -12,7 +12,6 @@ import { cn } from '../../lib/utils';
 import logo from '../../public/logo_paras_1.png';
 import { createClient } from '../../lib/supabase/client';
 
-// pkk_units punya FK region_id -> regions, jadi kolom wilayah dibaca dari tabel regions.
 const PKK_TABLE = 'pkk_units';
 const REGION_TABLE = 'regions';
 const REGION_COLUMNS = {
@@ -84,14 +83,6 @@ export default function Register() {
   const [showPass, setShowPass] = useState(false);
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
 
-  // Loading & feedback states
-  const [submitting, setSubmitting] = useState(false);
-  const [verifying, setVerifying] = useState(false);
-  const [resending, setResending] = useState(false);
-  const [authError, setAuthError] = useState('');
-  // const [otpError, setOtpError] = useState('')
-  const [otpInfo, setOtpInfo] = useState('');
-
   // Dynamic region state
   const [provinces, setProvinces] = useState([]);
   const [regencies, setRegencies] = useState([]);
@@ -114,13 +105,14 @@ export default function Register() {
 
   const [errors, setErrors] = useState({});
   const [registration, setRegistration] = useState(null);
-  const [sessionUser, setSessionUser] = useState(null);
+  const [sessionUser, setSessionUser] = useState(null); // pengguna yang SUDAH aktif & sedang login
 
   // State alur OTP
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [formError, setFormError] = useState('');
-  // const [otpError, setOtpError] = useState('');
+  const [otpError, setOtpError] = useState('');
+  const [otpInfo, setOtpInfo] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
 
   // Jika pengguna sudah punya sesi (mis. refresh halaman), tampilkan status pendaftarannya
@@ -129,6 +121,8 @@ export default function Register() {
     fetchRegistration(supabase).then((reg) => {
       if (cancelled || !reg) return;
       if (reg.status === 'approved') {
+        // Jangan redirect otomatis ke '/': jika beranda mengarahkan balik ke /register
+        // akan terjadi loop. Tampilkan info + pilihan untuk keluar.
         setSessionUser(reg);
         return;
       }
@@ -174,6 +168,9 @@ export default function Register() {
     let cancelled = false;
 
     async function checkPkkCommunity() {
+      // Sesuaikan 'pkk_units' dengan nama tabel komunitas PKK di database
+      // ilike = cocok tanpa peduli huruf besar/kecil (API wilayah memakai huruf kapital)
+      // !inner = hanya ambil pkk_units yang region-nya cocok dengan filter di bawah
       const { data, error } = await supabase
         .from(PKK_TABLE)
         .select(`pkk_unit_id, ${REGION_TABLE}!inner(region_id)`)
@@ -183,6 +180,7 @@ export default function Register() {
         .limit(1);
 
       if (cancelled) return;
+      // DEBUG sementara: hapus setelah berhasil
       console.log('[PKK check]', {
         dikirim: { city: form.city, kecamatan: form.kecamatan, kelurahan: form.generalKelurahan },
         data,
@@ -210,6 +208,10 @@ export default function Register() {
   const initializeGoogleOneTap = async () => {
     try {
       const [nonce, hashedNonce] = await generateNonce();
+
+      // Sudah punya sesi yang valid? Cukup lewati One Tap. JANGAN me-redirect ke '/':
+      // status akun (menunggu persetujuan / sudah aktif) ditangani efek pemulihan sesi di atas.
+      // getUser() memvalidasi ke server, jadi sesi sisa dari akun yang sudah dihapus tidak dihitung.
       const {
         data: { user: existingUser },
       } = await supabase.auth.getUser();
@@ -345,118 +347,159 @@ export default function Register() {
     return e;
   }
 
-  // Kirim pendaftaran ke Supabase Auth sehingga email OTP otomatis terkirim
+  // Langkah 1: daftar -> Supabase mengirim email berisi kode OTP
   async function handleSubmit(ev) {
     ev.preventDefault();
-    setAuthError('');
     const e = validate();
     if (Object.keys(e).length) {
       setErrors(e);
       return;
     }
 
-    setSubmitting(true);
+    setFormError('');
+    setIsSubmitting(true);
     try {
       const { data, error } = await supabase.auth.signUp({
         email: form.email.trim(),
         password: form.password,
         options: {
+          // Disimpan di user_metadata (bisa dipakai trigger untuk membuat profil)
           data: {
             full_name: form.name.trim(),
-            phone_number: form.phone.trim(),
-            account_category: accountType === 'pkk' ? 'PKK' : 'Umum',
+            phone: form.phone.trim(),
+            account_type: accountType,
             province: form.province,
             city: form.city,
-            district: form.kecamatan,
-            subdistrict: form.generalKelurahan,
+            kecamatan: form.kecamatan,
+            kelurahan: form.generalKelurahan,
           },
         },
       });
 
       if (error) throw error;
 
-      // Jika email sudah terdaftar dan terkonfirmasi sebelumnya, Supabase mengembalikan identities kosong
-      if (data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
-        setAuthError('Email ini sudah terdaftar. Silakan langsung masuk melalui halaman Login.');
+      // Email sudah terdaftar & terverifikasi: Supabase tidak error, tapi identities kosong
+      if (data.user && data.user.identities?.length === 0) {
+        setFormError('Email ini sudah terdaftar. Silakan masuk.');
         return;
       }
 
       setOtp(['', '', '', '', '', '']);
       setOtpError('');
-      setOtpInfo('');
+      setResendCooldown(60);
       setStep('otp');
     } catch (err) {
-      console.error('Error signUp:', err);
-      setAuthError(err.message || 'Gagal mendaftar & mengirim kode OTP ke email.');
+      console.error('Gagal mendaftar:', err);
+      const generic = String(err.message || '').includes('Database error saving new user');
+      setFormError(generic ? 'Pendaftaran gagal. Pastikan komunitas PKK di kelurahan Anda sudah terdaftar dan data sudah benar.' : err.message || 'Terjadi kesalahan saat mendaftar.');
     } finally {
-      setSubmitting(false);
+      setIsSubmitting(false);
     }
   }
 
-  // Verifikasi 6 digit kode OTP ke Supabase
+  // Langkah 2: verifikasi kode yang diketik pengguna
   async function handleVerifyOtp() {
     const token = otp.join('');
-    if (token.length < 6 || verifying) return;
+    if (token.length < 6) return;
 
-    setVerifying(true);
     setOtpError('');
+    setIsVerifying(true);
     try {
-      const { error } = await supabase.auth.verifyOtp({
+      const { data, error } = await supabase.auth.verifyOtp({
         email: form.email.trim(),
         token,
-        type: 'signup',
+        type: 'email',
       });
-
       if (error) throw error;
 
-      setRegistrationId(
-        submitRegistration({
+      // Profil dibuat otomatis oleh trigger di database saat signUp
+      const reg = await fetchRegistration(supabase);
+      setRegistration(
+        reg ?? {
+          id: data.user?.id ?? null,
           name: form.name.trim(),
           email: form.email.trim(),
-          phone: form.phone.trim(),
           type: accountType,
-          province: form.province,
-          city: form.city,
-          kecamatan: form.kecamatan,
-          kelurahan: `Kel. ${form.generalKelurahan}`,
-        }),
+          kelurahan: form.generalKelurahan,
+          status: 'pending',
+          submittedAt: Date.now(),
+        },
       );
       setStep('done');
     } catch (err) {
-      console.error('Error verifyOtp:', err);
-      setOtpError(err.message || 'Kode OTP tidak valid atau sudah kedaluwarsa.');
+      console.error('Verifikasi OTP gagal:', err);
+      setOtpError('Kode salah atau sudah kedaluwarsa. Coba lagi atau kirim ulang kode.');
     } finally {
-      setVerifying(false);
+      setIsVerifying(false);
     }
   }
 
-  // Kirim ulang kode OTP
   async function handleResendOtp() {
-    if (resending) return;
-    setResending(true);
+    if (resendCooldown > 0) return;
     setOtpError('');
     setOtpInfo('');
-    try {
-      const { error } = await supabase.auth.resend({
-        type: 'signup',
-        email: form.email.trim(),
-      });
-      if (error) throw error;
-      setOtpInfo('Kode verifikasi baru telah dikirim ke email Anda.');
-    } catch (err) {
-      console.error('Error resend OTP:', err);
-      setOtpError(err.message || 'Gagal mengirim ulang kode OTP. Tunggu sebentar lalu coba lagi.');
-    } finally {
-      setResending(false);
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: form.email.trim(),
+    });
+    if (error) {
+      console.error('Gagal kirim ulang:', error);
+      setOtpError(error.message || 'Gagal mengirim ulang kode.');
+      return;
     }
+    setResendCooldown(60);
+    setOtpInfo('Kode verifikasi baru telah dikirim ke email Anda.');
   }
 
   function handleOtpChange(i, val) {
+    const digit = val.replace(/\D/g, '').slice(-1);
     const next = [...otp];
-    next[i] = val.slice(-1);
+    next[i] = digit;
     setOtp(next);
-    setOtpError('');
-    if (val && i < 5) document.getElementById(`otp-${i + 1}`)?.focus();
+    if (digit && i < 5) document.getElementById(`otp-${i + 1}`)?.focus();
+  }
+
+  function handleOtpKeyDown(i, e) {
+    if (e.key === 'Backspace' && !otp[i] && i > 0) {
+      document.getElementById(`otp-${i - 1}`)?.focus();
+    }
+  }
+
+  function handleOtpPaste(e) {
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    if (!pasted) return;
+    e.preventDefault();
+    const next = ['', '', '', '', '', ''];
+    pasted.split('').forEach((c, idx) => (next[idx] = c));
+    setOtp(next);
+    document.getElementById(`otp-${Math.min(pasted.length, 5)}`)?.focus();
+  }
+
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+    setSessionUser(null);
+    setRegistration(null);
+    setStep('form');
+  }
+
+  // Pengguna sudah aktif & login: jangan tampilkan form daftar / redirect berulang
+  if (sessionUser && step === 'form') {
+    return (
+      <div className="flex min-h-[calc(100vh-64px)] flex-col items-center justify-center bg-white px-6 text-center">
+        <h2 className="text-foreground mb-2 text-xl font-black">Anda sudah masuk</h2>
+        <p className="text-muted-foreground mb-6 max-w-xs text-sm leading-relaxed">
+          Akun <span className="text-foreground font-bold">{sessionUser.name}</span> sudah aktif. Untuk mendaftarkan akun baru, keluar dulu dari akun ini.
+        </p>
+        <div className="w-full max-w-sm space-y-3">
+          <Link href="/" className="bg-brand block w-full rounded-xl py-3.5 text-center text-sm font-black text-white">
+            Ke Beranda
+          </Link>
+          <button type="button" onClick={handleSignOut} className="border-brand-light text-brand hover:bg-brand-xlight block w-full rounded-xl border-2 py-3 text-sm font-bold">
+            Keluar & daftar akun baru
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (step === 'otp') {
@@ -466,23 +509,10 @@ export default function Register() {
           <Mail className="text-brand h-8 w-8" />
         </div>
         <h2 className="text-foreground mb-2 text-center text-2xl font-black">Verifikasi Email</h2>
-        <p className="text-muted-foreground mb-6 text-center text-sm leading-relaxed">
+        <p className="text-muted-foreground mb-8 text-center text-sm leading-relaxed">
           Masukkan kode 6 digit yang kami kirim ke <span className="text-foreground font-bold">{form.email}</span>
         </p>
-
-        {otpError && (
-          <div role="alert" className="mb-4 w-full max-w-xs rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-center text-xs font-semibold text-red-600">
-            {otpError}
-          </div>
-        )}
-
-        {otpInfo && (
-          <div role="status" className="border-brand-light bg-brand-xlight text-brand-dark mb-4 w-full max-w-xs rounded-xl border px-3.5 py-2.5 text-center text-xs font-semibold">
-            {otpInfo}
-          </div>
-        )}
-
-        <div className="mb-8 flex gap-2">
+        <div className="mb-4 flex gap-2">
           {otp.map((digit, i) => (
             <input
               key={i}
@@ -499,6 +529,11 @@ export default function Register() {
             />
           ))}
         </div>
+        {otpInfo && (
+          <p role="status" className="text-brand-dark mb-4 max-w-xs text-center text-xs font-semibold">
+            {otpInfo}
+          </p>
+        )}
         {otpError && (
           <p role="alert" className="mb-4 max-w-xs text-center text-xs text-red-500">
             {otpError}
@@ -507,19 +542,17 @@ export default function Register() {
         <button
           type="button"
           onClick={handleVerifyOtp}
-          disabled={otp.join('').length < 6 || verifying}
-          className="bg-brand hover:bg-brand-dark mb-4 flex w-full max-w-xs items-center justify-center gap-2 rounded-xl py-3.5 font-black text-white transition-colors disabled:opacity-50"
+          disabled={otp.join('').length < 6 || isVerifying}
+          className="bg-brand hover:bg-brand-dark mb-4 flex w-full max-w-sm items-center justify-center gap-2 rounded-xl py-3.5 font-black text-white transition-colors disabled:opacity-50"
         >
-          {verifying ? (
-            <>
-              <LoaderCircle className="h-4 w-4 animate-spin" /> Memverifikasi...
-            </>
-          ) : (
-            'Verifikasi'
-          )}
+          {isVerifying && <LoaderCircle className="h-4 w-4 motion-safe:animate-spin" />}
+          {isVerifying ? 'Memverifikasi...' : 'Verifikasi'}
         </button>
-        <button type="button" onClick={handleResendOtp} disabled={resending} className="text-muted-foreground text-sm disabled:opacity-50">
-          Tidak menerima kode? <span className="text-pink font-bold">{resending ? 'Mengirim...' : 'Kirim ulang'}</span>
+        <button type="button" onClick={handleResendOtp} disabled={resendCooldown > 0} className="text-muted-foreground text-sm disabled:opacity-60">
+          Tidak menerima kode? <span className="text-pink font-bold">{resendCooldown > 0 ? `Kirim ulang (${resendCooldown}s)` : 'Kirim ulang'}</span>
+        </button>
+        <button type="button" onClick={() => setStep('form')} className="text-muted-foreground mt-3 text-xs underline">
+          Ganti email
         </button>
       </div>
     );
@@ -561,12 +594,6 @@ export default function Register() {
               <span className="text-muted-foreground text-xs">atau isi formulir</span>
               <div className="bg-border h-px flex-1" />
             </div>
-
-            {authError && (
-              <div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs font-semibold text-red-600">
-                {authError}
-              </div>
-            )}
 
             {/* Account type */}
             <div className="mb-5">
@@ -782,12 +809,12 @@ export default function Register() {
 
               <button
                 type="submit"
-                disabled={pkkBlocked || submitting}
+                disabled={pkkBlocked || isCheckingPkk || isSubmitting}
                 className="bg-brand hover:bg-brand-dark mt-2 flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-black text-white transition-colors disabled:cursor-not-allowed disabled:bg-slate-300"
               >
-                {submitting ? (
+                {isSubmitting ? (
                   <>
-                    <LoaderCircle className="h-4 w-4 animate-spin" /> Mengirim Kode OTP...
+                    <LoaderCircle className="h-4 w-4 motion-safe:animate-spin" /> Mengirim Kode OTP...
                   </>
                 ) : (
                   <>
