@@ -7,7 +7,7 @@ const REGISTER_PATH = '/register';
 const HOME_PATH = '/home';
 const MAINTENANCE_PATH = '/maintenance';
 
-const PROTECTED_PREFIXES = ['/home', '/aksi', '/info', '/lapor', '/pantau', '/profile', '/store', '/api/lapor'];
+const PROTECTED_PREFIXES = ['/home', '/aksi', '/info', '/lapor', '/pantau', '/profile', '/store', '/api/lapor', '/api/pantau', '/api/profile'];
 const LEADER_PREFIXES = ['/admin'];
 const PUBLIC_EXCEPTIONS = ['/admin/login', '/pkk/community'];
 // ---------------------------------------------------------------------
@@ -137,7 +137,7 @@ export default async function proxy(request) {
     return redirectTo(request, supabaseResponse, isLeaderRoute ? ADMIN_LOGIN_PATH : LOGIN_PATH, { next: pathname });
   }
 
-  // 5. ...dan akun harus 'active' (pending/rejected/suspended diarahkan ke /register
+  // 5. ...dan akun harus 'active'
   const { data: profile } = await supabase.from('profiles').select('account_status').eq('user_id', userId).maybeSingle();
   if (profile?.account_status !== 'active') {
     if (isApi) return jsonError(supabaseResponse, 403, 'Akun Anda belum aktif.');
