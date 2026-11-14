@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { useReportContext } from '@/context/ReportContext';
 import Link from 'next/link'; // Mengubah react-router menjadi next/link
 import { Send, Paperclip, X, CheckCircle2, FileText, Image as ImageIcon, ArrowRight, MessageCircle, MapPin, Lock } from 'lucide-react'; // Mengubah 'Image' menjadi 'ImageIcon' untuk menghindari konflik
 import { cn } from '@/lib/utils';

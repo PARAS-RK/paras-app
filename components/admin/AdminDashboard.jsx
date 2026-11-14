@@ -94,18 +94,32 @@ export default function AdminDashboard() {
     setRoutingNotice(message);
   }
 
-  function rerouteAndReview(reportId, route) {
-    rerouteReport(reportId, route);
-    routeWithFeedback(
-      route === "emergency"
-        ? "Laporan berhasil dipindahkan ke Jalur Darurat."
-        : "Laporan berhasil dipindahkan ke Jalur Komunitas.",
-    );
-  }
+  async function rerouteAndReview(reportId, route) {
+    const result = await rerouteReport(reportId, route);
 
-  function acceptReport(report) {
-    reviewDashboardReport(report.id);
-        setRoutingNotice('Laporan Berhasil Diterima.')
+    if (!result.success) {
+        setRoutingNotice(result.message || 'Gagal menyimpan perubahan rute.');
+        return false;
+    }
+
+    routeWithFeedback(
+        route === "emergency"
+            ? "Laporan berhasil dipindahkan ke Jalur Darurat."
+            : "Laporan berhasil dipindahkan ke Jalur Komunitas."
+    );
+
+    return true;
+}
+
+async function acceptReport(report) {
+    const result = await reviewDashboardReport(report.id);
+
+    if (!result.success) {
+        setRoutingNotice(result.message || 'Gagal menerima laporan.');
+        return;
+    }
+
+    setRoutingNotice('Laporan berhasil diterima.');
 }
 
 function rejectDashboardReport(report) {
@@ -113,23 +127,34 @@ function rejectDashboardReport(report) {
     setRejectionReason('');
 }
 
-function confirmRejectReport() {
+async function confirmRejectReport() {
     if (!rejectingReport || !rejectionReason.trim()) return;
 
-    rejectReport(rejectingReport.id, rejectionReason.trim());
+    const result = await rejectReport(
+        rejectingReport.id,
+        rejectionReason.trim()
+    );
+
+    if (!result.success) {
+        setRoutingNotice(result.message || 'Gagal menolak laporan.');
+        return;
+    }
+
     setRejectingReport(null);
     setRejectionReason('');
     setRoutingNotice('Laporan warga berhasil ditolak.');
 }
 
-function overrideReport(report) {
-    const currentRoute =
-        report.handledBy === 'bpbd' ? 'emergency' : 'community';
+async function overrideReport(report) {
+    const currentRoute = report.handledBy === 'bpbd'
+        ? 'emergency'
+        : 'community';
 
-    const destinationRoute =
-        currentRoute === 'emergency' ? 'community' : 'emergency';
+    const destinationRoute = currentRoute === 'emergency'
+        ? 'community'
+        : 'emergency';
 
-    rerouteAndReview(report.id, destinationRoute);
+    await rerouteAndReview(report.id, destinationRoute);
 }
 
   return (
