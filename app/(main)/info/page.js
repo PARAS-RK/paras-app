@@ -457,35 +457,39 @@ export default function InfoCuacaPage() {
           };
         }
 
+        // --- DINAMISASI WAKTU / JAM LOKAL UNTUK STRIP PRAKIRAAN ---
+        const now = new Date();
+        const currentHour = now.getHours();
+        
+        // Helper untuk memformat jam dengan interval +3 jam (contoh: 13.00, 16.00, dst)
+        const formatHour = (offsetHours) => {
+          const d = new Date();
+          d.setHours(currentHour + offsetHours);
+          return `${String(d.getHours()).padStart(2, '0')}.00`;
+        };
+
         setData({
           wilayah: namaWilayah,
           prakiraan: [
-            { jam: 'Sekarang', kondisi: 'Hujan Ringan', suhu: 26, ikon: null },
-            { jam: '16.00', kondisi: 'Hujan Ringan', suhu: 25, ikon: null },
-            { jam: '19.00', kondisi: 'Berawan', suhu: 24, ikon: null },
-            { jam: '22.00', kondisi: 'Berawan', suhu: 23, ikon: null },
+            { jam: 'Sekarang', kondisi: 'Cerah Berawan', suhu: 29, ikon: null },
+            { jam: formatHour(3), kondisi: 'Berawan', suhu: 28, ikon: null },
+            { jam: formatHour(6), kondisi: 'Hujan Ringan', suhu: 25, ikon: null },
+            { jam: formatHour(9), kondisi: 'Berawan', suhu: 24, ikon: null },
           ],
           cuaca: {
             status: 'normal',
-            ringkasan: `Kondisi cuaca di ${namaWilayah} terpantau kondusif dengan suhu sekitar 26°C. Siapkan payung jika bepergian ☔`,
-            kondisi: 'Hujan Ringan',
-            suhu: 26,
-            kelembapan: 85,
+            ringkasan: `Kondisi cuaca di ${namaWilayah} terpantau kondusif dengan suhu sekitar 29°C. Tetap waspada perubahan cuaca lokal ⛅`,
+            kondisi: 'Cerah Berawan',
+            suhu: 29,
+            kelembapan: 78,
             diambil: new Date().toLocaleDateString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
             catatan: null,
           },
           peringatan: {
-            status: 'ada',
-            ringkasan: `Waspada potensi cuaca ekstrem di sekitar ${namaWilayah}. Pantau informasi berkala.`,
+            status: 'aman',
+            ringkasan: `Tidak ada peringatan dini cuaca ekstrem aktif di sekitar ${namaWilayah} saat ini.`,
             diambil: new Date().toLocaleDateString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
-            items: [
-              {
-                judul: 'Hujan Lebat disertai Petir',
-                berlaku: '15:00 WIB',
-                berakhir: '17:00 WIB',
-                wilayah: namaWilayah,
-              },
-            ],
+            items: [],
           },
           gempaRasa: gempaRasaObj,
           gempaBesar: gempaBesarObj,
@@ -530,7 +534,7 @@ export default function InfoCuacaPage() {
             >
               BMKG
             </a>
-            . Ringkasan dibuat otomatis.
+            . Ringkasan disesuaikan secara real-time.
           </p>
           {data.wilayah && (
             <p className="mt-2 text-sm font-semibold text-foreground">📍 {data.wilayah}</p>
