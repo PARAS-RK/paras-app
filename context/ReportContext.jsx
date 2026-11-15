@@ -90,58 +90,95 @@ export function ReportProvider({ children, source = 'local', regionId=null}) {
     );
 
     async function saveAdminReview(report, decision, route = null, reason = null) {
-    // Provider publik tetap menggunakan perilaku lokal.
+        const supabase = createClient();
     if (source !== 'admin') {
         return { success: true };
     }
 
-    if (!report?.databaseId) {
+    if (!report.databaseId) {
         return {
             success: false,
-            message: 'ID laporan dari database tidak ditemukan.',
+            error: 'ID laporan database tidak ditemukan.',
         };
     }
 
-    try {
-        const supabase = createClient();
+    const { data: { user }, error: authError } =
+        await supabase.auth.getUser();
+        console.log('AUTH CHECK:', {
+    userId: user?.id,
+    email: user?.email,
+    authError,
+    reportId: report?.databaseId,
+});
 
-        const { data: { user }, error: authError } =
-            await supabase.auth.getUser();
-
-        if (authError || !user) {
-            return {
-                success: false,
-                message: 'Sesi login Ketua PKK belum tersedia. Bypass admin tidak cukup untuk menyimpan keputusan.',
-            };
-        }
-
-        const now = new Date().toISOString();
-
-        const { error } = await supabase
-            .from('report_admin_reviews')
-            .upsert({
-                report_id: report.databaseId,
-                review_decision: decision,
-                handling_route: route,
-                review_reason: reason,
-                reviewed_by: user.id,
-                reviewed_at: now,
-                updated_at: now,
-            }, {
-                onConflict: 'report_id',
-            });
-
-        if (error) throw error;
-
-        return { success: true };
-    } catch (error) {
-        console.error('Gagal menyimpan keputusan laporan:', error);
-
+    if (authError || !user) {
         return {
             success: false,
-            message: error.message || 'Gagal menyimpan keputusan ke Supabase.',
+            error: 'Sesi admin tidak ditemukan.',
         };
     }
+
+    const now = new Date().toISOString();
+    const reportStatus =
+        decision === 'rejected' ? 'rejected' : 'in_review';
+
+    const logNotes = {
+        accepted: 'Laporan diterima oleh Ketua PKK.',
+        rejected: reason || 'Laporan ditolak oleh Ketua PKK.',
+        overridden: `Rute penanganan diubah menjadi ${route === 'jalur_a' ? 'Jalur A' : 'Jalur B'}.`,
+    };
+
+    // 1. Simpan keputusan admin
+    const { error: reviewError } = await supabase
+        .from('report_admin_reviews')
+        .upsert({
+            report_id: report.databaseId,
+            review_decision: decision,
+            handling_route: route,
+            review_reason: reason,
+            reviewed_by: user.id,
+            reviewed_at: now,
+            updated_at: now,
+        }, {
+            onConflict: 'report_id',
+        });
+
+    if (reviewError) {
+        console.error('Gagal menyimpan keputusan:', reviewError);
+        return { success: false, error: reviewError.message };
+    }
+
+    // 2. Perbarui status laporan
+    const { error: reportError } = await supabase
+        .from('reports')
+        .update({
+            report_status: reportStatus,
+            updated_at: now,
+        })
+        .eq('report_id', report.databaseId);
+
+    if (reportError) {
+        console.error('Gagal memperbarui status laporan:', reportError);
+        return { success: false, error: reportError.message };
+    }
+
+    // 3. Catat riwayat perubahan status
+    const { error: logError } = await supabase
+        .from('report_status_logs')
+        .insert({
+            report_id: report.databaseId,
+            log_status: reportStatus,
+            log_notes: logNotes[decision] || 'Keputusan admin diperbarui.',
+            is_public: false,
+            created_by: user.id,
+        });
+
+    if (logError) {
+        console.error('Gagal menyimpan riwayat status:', logError);
+        return { success: false, error: logError.message };
+    }
+
+    return { success: true };
 }
 
     useEffect(() => {
@@ -163,6 +200,10 @@ const { data: rows, error } = await supabase
   .select('*')
   .eq('region_id', regionId)
   .order('created_at', { ascending: false });
+    console.log('REGION ID:', regionId);
+    console.log('ERROR FETCH:', error);
+    console.log('JUMLAH LAPORAN:', rows?.length);
+    console.log('DATA LAPORAN:', rows);
 
             if (error) {
                 console.error('Gagal mengambil laporan:', error);
@@ -213,14 +254,147 @@ const { data: rows, error } = await supabase
             const regions = regionsResult.data || [];
             const categories = categoriesResult.data || [];
 
-            const mappedReports = rows.map(row =>
-                mapDatabaseReport(
-                    row,
-                    profiles.find(p => p.user_id === row.user_id),
-                    regions.find(r => r.region_id === row.region_id),
-                    categories.find(c => c.category_code === row.report_category)
-                )
-            );
+            const reportIds = rows.map(row => row.report_id);
+
+// Ambil keputusan admin
+const { data: reviewRows, error: reviewError } = await supabase
+    .from('report_admin_reviews')
+    .select(`
+        report_id,
+        review_decision,
+        handling_route,
+        review_reason,
+        reviewed_at
+    `)
+    .in('report_id', reportIds);
+
+if (reviewError) {
+    console.error('Gagal mengambil keputusan admin:', reviewError);
+}
+
+// Ambil data eskalasi Jalur A
+const { data: escalationRows, error: escalationError } = await supabase
+    .from('report_escalations')
+    .select('*')
+    .in('report_id', reportIds);
+
+if (escalationError) {
+    console.error('Gagal mengambil data eskalasi:', escalationError);
+}
+
+// Ambil timeline eskalasi
+const escalationIds = (escalationRows || [])
+    .map(item => item.escalation_id);
+
+const { data: escalationLogs, error: escalationLogsError } =
+    escalationIds.length
+        ? await supabase
+            .from('report_escalation_logs')
+            .select('*')
+            .in('escalation_id', escalationIds)
+            .order('created_at', { ascending: true })
+        : { data: [], error: null };
+
+if (escalationLogsError) {
+    console.error('Gagal mengambil timeline eskalasi:', escalationLogsError);
+}
+
+if (!isActive) return;
+
+// Pemetaan keputusan admin
+const reviewsByReport = new Map(
+    (reviewRows || []).map(review => [
+        String(review.report_id),
+        review,
+    ])
+);
+
+// Pemetaan data eskalasi
+const escalationsByReport = new Map(
+    (escalationRows || []).map(item => [
+        String(item.report_id),
+        item,
+    ])
+);
+
+// Pemetaan timeline eskalasi
+const logsByEscalation = new Map();
+
+(escalationLogs || []).forEach(log => {
+    const key = String(log.escalation_id);
+
+    if (!logsByEscalation.has(key)) {
+        logsByEscalation.set(key, []);
+    }
+
+    logsByEscalation.get(key).push({
+        id: log.log_id,
+        type: log.activity_type,
+        label: log.activity_type,
+        description: log.activity_description || '',
+        timestamp: log.created_at,
+    });
+});
+
+const mappedReports = rows.map(row => {
+    const profile = profiles.find(p => p.user_id === row.user_id);
+    const region = regions.find(r => r.region_id === row.region_id);
+    const category = categories.find(
+        c => c.category_code === row.report_category
+    );
+
+    const report = mapDatabaseReport(row, profile, region, category);
+    const review = reviewsByReport.get(String(row.report_id));
+    const escalation = escalationsByReport.get(String(row.report_id));
+
+    const escalationTimeline = escalation
+        ? logsByEscalation.get(String(escalation.escalation_id)) || []
+        : [];
+
+    return {
+        ...report,
+
+        ...(review ? {
+            handledBy: review.handling_route === 'jalur_a'
+                ? 'bpbd'
+                : review.handling_route === 'jalur_b'
+                    ? 'community'
+                    : 'unassigned',
+
+            dashboardDecision: review.review_decision,
+            dashboardRoute: review.handling_route === 'jalur_a'
+                ? 'emergency'
+                : review.handling_route === 'jalur_b'
+                    ? 'community'
+                    : null,
+
+            dashboardReviewedAt: review.reviewed_at
+                ? new Date(review.reviewed_at).toLocaleString('id-ID')
+                : null,
+
+            reviewDecision: review.handling_route === 'jalur_b' &&
+                review.review_decision === 'accepted'
+                    ? 'accepted'
+                    : null,
+
+            rejectionReason: review.review_decision === 'rejected'
+                ? review.review_reason
+                : null,
+        } : {}),
+
+        ...(escalation ? {
+            escalationId: escalation.escalation_id,
+            emergencyDraft: escalation.draft_message,
+            emergencyHotline: escalation.hotline,
+            escalationStatus: escalation.escalation_status,
+            completionNotes: escalation.completion_notes,
+            resolution: escalation.resolution,
+            proofPath: escalation.proof_path,
+        } : {}),
+
+        timeline: escalationTimeline,
+    };
+});
 
             const mediaResponse = await fetch("/api/admin/reports/media", {
   cache: "no-store",
@@ -255,6 +429,8 @@ const reportsWithMedia = mappedReports.map((report) => ({
 }));
 
 setReports(reportsWithMedia);
+console.log('MAPPED REPORTS:', mappedReports);
+console.log('FINAL REPORTS:', reportsWithMedia);
         }
 
         fetchReports();
@@ -265,45 +441,286 @@ setReports(reportsWithMedia);
     }, [source, regionId]);
 
     // Persetujuan untuk memulai proses penanganan laporan.
-    function approveReport(id) {
-    setReports(prev => prev.map(report => {
-        if (report.id !== id || report.status === 'handled') return report;
+    const approveReport = async (id) => {
+    const supabase = createClient();
 
-        return addTimelineEntry({
-            ...report,
-            status: 'in_progress',
-        }, 'handling', 'Penanganan dimulai',
-        'Laporan mulai diproses oleh jalur penanganan terkait.');
-    }));
-}
+    const report = reports.find(item => item.id === id);
 
-    const saveEmergencyDraft = (id, message, hotline) => {
-    setReports((prev) =>
-        prev.map((report) =>
-            report.id === id
-                ? {
-                    ...report,
-                    emergencyDraft: message,
-                    emergencyHotline: hotline,
-                }
-                : report
-        )
-    );
+    if (!report?.databaseId) {
+        console.error('ID laporan tidak ditemukan:', id);
+        return false;
+    }
+
+    const { data: escalation, error: escalationError } = await supabase
+        .from('report_escalations')
+        .upsert({
+            report_id: report.databaseId,
+            draft_message: report.emergencyDraft || null,
+            hotline: report.emergencyHotline || null,
+            escalation_status: 'in_progress',
+            updated_at: new Date().toISOString(),
+        }, {
+            onConflict: 'report_id',
+        })
+        .select()
+        .single();
+
+    if (escalationError) {
+        console.error('Gagal memperbarui status eskalasi:', escalationError);
+        return false;
+    }
+
+    const { error: reportError } = await supabase
+        .from('reports')
+        .update({
+            report_status: 'in_progress',
+            updated_at: new Date().toISOString(),
+        })
+        .eq('report_id', report.databaseId);
+
+    if (reportError) {
+        console.error('Gagal memperbarui status laporan:', reportError);
+        return false;
+    }
+
+    const { data: { user } } = await supabase.auth.getUser();
+
+    const { error: statusLogError } = await supabase
+        .from('report_status_logs')
+        .insert({
+            report_id: report.databaseId,
+            log_status: 'in_progress',
+            log_notes: 'Laporan mulai ditangani melalui Jalur A.',
+            created_by: user?.id,
+        });
+
+    if (statusLogError) {
+        console.error('Gagal menyimpan riwayat status:', statusLogError);
+    }
+
+    const { error: activityLogError } = await supabase
+        .from('report_escalation_logs')
+        .insert({
+            escalation_id: escalation.escalation_id,
+            activity_type: 'handling_started',
+            activity_description: 'Ketua PKK memulai penanganan laporan Jalur A.',
+            created_by: user?.id,
+        });
+
+    if (activityLogError) {
+        console.error('Gagal menyimpan aktivitas eskalasi:', activityLogError);
+    }
+
+    setReports(prev => prev.map(item =>
+        item.id === id
+            ? {
+                ...item,
+                status: 'in_progress',
+                escalationId: escalation.escalation_id,
+                escalationStatus: 'in_progress',
+                timeline: [
+                    ...(item.timeline || []),
+                    {
+                        type: 'handling_started',
+                        label: 'Penanganan dimulai',
+                        description: 'Laporan mulai ditangani melalui Jalur A.',
+                        timestamp: new Date().toISOString(),
+                    },
+                ],
+            }
+            : item
+    ));
+
+    return true;
 };
 
-    function finalizeReport(id, publicMessage, resolution = {}) {
-    setReports(prev => prev.map(report => {
-        if (report.id !== id) return report;
+    const saveEmergencyDraft = async (id, message, hotline) => {
+    const supabase = createClient();
 
-        return addTimelineEntry({
-            ...report,
-            status: 'handled',
-            publicMessage,
-            completedAt: getTimestamp(),
-            ...resolution,
-        }, 'completed', 'Penanganan selesai', publicMessage);
-    }));
+    const report = reports.find(item => item.id === id);
+
+    if (!report?.databaseId) {
+        console.error('ID laporan tidak ditemukan:', id);
+        return false;
+    }
+
+    const { data: escalation, error: escalationError } = await supabase
+        .from('report_escalations')
+        .upsert({
+            report_id: report.databaseId,
+            draft_message: message,
+            hotline,
+            escalation_status: report.escalationStatus || 'draft',
+            updated_at: new Date().toISOString(),
+        }, {
+            onConflict: 'report_id',
+        })
+        .select()
+        .single();
+
+    if (escalationError) {
+        console.error('Gagal menyimpan draft eskalasi:', escalationError);
+        return false;
+    }
+
+    const { data: { user } } = await supabase.auth.getUser();
+
+    const { error: logError } = await supabase
+        .from('report_escalation_logs')
+        .insert({
+            escalation_id: escalation.escalation_id,
+            activity_type: 'draft_saved',
+            activity_description: 'Draft pesan eskalasi dan hotline disimpan.',
+            created_by: user?.id,
+        });
+
+    if (logError) {
+        console.error('Gagal menyimpan log eskalasi:', logError);
+    }
+
+    setReports(prev => prev.map(item =>
+        item.id === id
+            ? {
+                ...item,
+                escalationId: escalation.escalation_id,
+                emergencyDraft: message,
+                emergencyHotline: hotline,
+                escalationStatus: escalation.escalation_status,
+            }
+            : item
+    ));
+
+    return true;
+};
+
+    const finalizeReport = async (id, publicMessage, resolution = {}) => {
+    const supabase = createClient();
+
+    const report = reports.find(item => item.id === id);
+
+    if (!report?.databaseId) {
+        console.error('ID laporan tidak ditemukan:', id);
+        return false;
+    }
+
+    if (!report.escalationId) {
+        console.error('Data eskalasi belum tersedia untuk laporan:', id);
+        return false;
+    }
+
+    const completionNotes = resolution.completionNotes || '';
+    const resolutionText = resolution.resolution || publicMessage || '';
+    let proofPath = report.proofPath || null;
+
+if (resolution.proofFile) {
+    const file = resolution.proofFile;
+
+    const extension = file.name?.split('.').pop()?.toLowerCase() || 'jpg';
+    const safeExtension = /^[a-z0-9]+$/.test(extension)
+        ? extension
+        : 'jpg';
+
+    const filePath = `jalur-a/${report.databaseId}/bukti-penyelesaian.${safeExtension}`;
+
+    const { data: uploadedFile, error: uploadError } = await supabase
+        .storage
+        .from('bukti-laporan')
+        .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: true,
+            contentType: file.type || 'image/jpeg',
+        });
+
+    if (uploadError) {
+        console.error('Gagal mengunggah foto bukti:', uploadError);
+        return false;
+    }
+
+    proofPath = uploadedFile.path;
 }
+
+    const { error: escalationError } = await supabase
+        .from('report_escalations')
+        .update({
+            escalation_status: 'resolved',
+            completion_notes: completionNotes,
+            resolution: resolutionText,
+            proof_path: proofPath,
+            updated_at: new Date().toISOString(),
+        })
+        .eq('escalation_id', report.escalationId);
+
+    if (escalationError) {
+        console.error('Gagal menyimpan penyelesaian eskalasi:', escalationError);
+        return false;
+    }
+
+    const { error: reportError } = await supabase
+        .from('reports')
+        .update({
+            report_status: 'resolved',
+            updated_at: new Date().toISOString(),
+        })
+        .eq('report_id', report.databaseId);
+
+    if (reportError) {
+        console.error('Gagal memperbarui status laporan:', reportError);
+        return false;
+    }
+
+    const { data: { user } } = await supabase.auth.getUser();
+
+    const { error: statusLogError } = await supabase
+        .from('report_status_logs')
+        .insert({
+            report_id: report.databaseId,
+            log_status: 'resolved',
+            log_notes: completionNotes || 'Laporan Jalur A telah diselesaikan.',
+            created_by: user?.id,
+        });
+
+    if (statusLogError) {
+        console.error('Gagal menyimpan riwayat status:', statusLogError);
+    }
+
+    const { error: activityLogError } = await supabase
+        .from('report_escalation_logs')
+        .insert({
+            escalation_id: report.escalationId,
+            activity_type: 'resolved',
+            activity_description: completionNotes || 'Penanganan laporan Jalur A selesai.',
+            created_by: user?.id,
+        });
+
+    if (activityLogError) {
+        console.error('Gagal menyimpan aktivitas penyelesaian:', activityLogError);
+    }
+
+    setReports(prev => prev.map(item =>
+        item.id === id
+            ? {
+                ...item,
+                status: 'handled',
+                escalationStatus: 'resolved',
+                completionNotes,
+                resolution: resolutionText,
+                publicMessage,
+                completedAt: new Date().toISOString(),
+                timeline: [
+                    ...(item.timeline || []),
+                    {
+                        type: 'resolved',
+                        label: 'Penanganan selesai',
+                        description: completionNotes || 'Penanganan laporan Jalur A selesai.',
+                        timestamp: new Date().toISOString(),
+                    },
+                ],
+            }
+            : item
+    ));
+
+    return true;
+};
 
     // Penolakan laporan warga pada Dashboard.
 async function rejectReport(id, reason) {

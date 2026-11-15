@@ -62,7 +62,14 @@ export default function AdminDashboard() {
   const [expandedReportId, setExpandedReportId] = useState(null);
   const [routingNotice, setRoutingNotice] = useState("");
   const scopedUsers = USERS.filter((user) => user.area === areaLabel);
-  const scopedReports = reports.filter((report) => report.area === areaLabel);
+  const scopedReports = reports.filter(
+    (report) =>
+        report.area.replace(/^Kel\.\s*/, '').trim() ===
+        areaLabel.replace(/^Kel\.\s*/, '').trim()
+);
+console.log('AREA LABEL:', areaLabel);
+console.log('REPORT AREA:', reports.map(r => r.area));
+console.log('SCOPED REPORTS:', scopedReports);
   const activeReports = scopedReports.filter(
     (report) => report.status === "pending" || report.status === "in_progress"
   );
@@ -81,6 +88,15 @@ export default function AdminDashboard() {
     location: reportLocations[report.id] || areaLabel,
   }));
 
+  console.log(
+  'DASHBOARD DECISION:',
+  dashboardReports.map(report => ({
+    id: report.databaseId,
+    decision: report.dashboardDecision,
+    route: report.dashboardRoute,
+  }))
+);
+
   const filteredReports = dashboardReports
     .filter((report) => ! report.dashboardDecision)
     .filter((report) =>
@@ -89,6 +105,9 @@ export default function AdminDashboard() {
             ? report.handledBy === 'bpbd'
             : report.handledBy === 'community')
     );
+    console.log('DASHBOARD REPORTS:', dashboardReports);
+    console.log('REPORT TAB:', reportTab);
+    console.log('FILTERED REPORTS:', filteredReports);
 
   function routeWithFeedback(message) {
     setRoutingNotice(message);
