@@ -47,7 +47,7 @@ const seed = [
         title: 'Laporan darurat masuk',
         body: 'Banjir setinggi 50 cm di RT 04 / RW 05 perlu diteruskan ke BPBD.',
         time: '5 menit lalu',
-        sortAt: Date.now() - 5 * 60 * 1000,
+        sortAt: 0,
         to: '/admin/ai-assistant?queue=emergency'
     },
     {
@@ -56,7 +56,7 @@ const seed = [
         title: 'Laporan baru diterima',
         body: 'Tumpukan sampah di Jl. Melati RW 03 masuk ke Tabungan Aksi.',
         time: '25 menit lalu',
-        sortAt: Date.now() - 25 * 60 * 1000,
+        sortAt: 0,
         to: '/admin/actions/savings'
     },
     {
@@ -65,7 +65,7 @@ const seed = [
         title: 'Bukti aksi menunggu verifikasi',
         body: '3 foto bukti baru dari peserta Gotong Royong Saluran Air RT 04.',
         time: '1 jam lalu',
-        sortAt: Date.now() - 60 * 60 * 1000,
+        sortAt: 0,
         to: '/admin/actions'
     },
     {
@@ -74,7 +74,7 @@ const seed = [
         title: 'Draf aksi komunitas siap terbit',
         body: 'Asisten AI menyusun draf aksi dari 2 laporan pada klaster drainase.',
         time: 'Kemarin',
-        sortAt: Date.now() - 24 * 60 * 60 * 1000,
+        sortAt: 0,
         read: true,
         to: '/admin/ai-assistant'
     },
@@ -86,6 +86,11 @@ export default function AdminNotifications() {
     const { aksi } = useAksiState();
     const [open, setOpen] = useState(false);
     const [confirmClear, setConfirmClear] = useState(false);
+    const [currentTime, setCurrentTime] = useState(null);
+    
+    useEffect(() => {
+        setCurrentTime(Date.now());
+    }, []);
 
     const [readIds, setReadIds] = useState(
         () => new Set(seed.filter((n) => n.read).map((n) => n.id))
@@ -108,7 +113,7 @@ export default function AdminNotifications() {
             sortAt: r.submittedAt,
             title: `Pendaftar ${r.type === 'pkk' ? 'Anggota PKK' : 'Warga Umum'} menunggu persetujuan`,
             body: `${r.name} mendaftar dari ${r.kelurahan}. Setujui dalam 1x24 jam.`,
-            time: formatSubmitted(r.submittedAt),
+            time: currentTime ? formatSubmitted(r.submittedAt, currentTime) : '',
             to: '/admin/manajemen-pengguna',
         }));
 
