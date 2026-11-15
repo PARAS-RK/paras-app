@@ -99,10 +99,7 @@ export default async function proxy(request) {
   }
 
   // 2. Perlu cek sesi?
-  // KOMENTARIN DULU, BIAR BISA AKSES DASHBOARD, KALAU UDAH NANTI BAGIAN INI DIAKTIFKAN LALU KOMENTARIN BAGIAN CONST ISADMINBYPASS SAMA CONST ISEXCEPTION NYA const isException = matches(pathname, PUBLIC_EXCEPTIONS);
-  // bagian ini cuman untuk bypass sementara, biar bisa akses dashboard admin tanpa harus login dulu
-  const isAdminBypass = matches(pathname, ['/admin']) && !matches(pathname, ['/admin/login']);
-  const isException = matches(pathname, PUBLIC_EXCEPTIONS) || isAdminBypass;
+  const isException = matches(pathname, PUBLIC_EXCEPTIONS);
   const isLeaderRoute = matches(pathname, LEADER_PREFIXES) && !isException;
   const isProtected = !isException && (matches(pathname, PROTECTED_PREFIXES) || isLeaderRoute);
   const hasSessionCookie = request.cookies.getAll().some((c) => c.name.startsWith('sb-'));
