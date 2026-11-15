@@ -235,6 +235,9 @@ async function overrideReport(report) {
                         <span className="flex items-center gap-1">
                           <Clock className="h-3 w-3 shrink-0 text-slate-400" /> {report.date}
                         </span>
+                        <span>
+                          <p className="flex items-center gap-1"> Detail Lokasi: {report.locationDetail || "Detail lokasi belum diisi"}</p>
+                        </span>
                       </div>
                       <button
                         type="button"
@@ -300,14 +303,42 @@ report.dashboardDecision === 'overridden' ? (
                         <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-600">{report.details}</p>
                       </div>
                       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                        <div className="flex min-h-24 items-center justify-center bg-slate-100 text-slate-400">
-                          <Camera className="h-6 w-6" />
-                        </div>
-                        <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-3 py-2.5">
-                          <span className="truncate text-xs font-bold text-slate-600">bukti-{report.id}.jpg</span>
-                          <span className="shrink-0 text-xs font-black text-brand">Bukti warga</span>
-                        </div>
-                      </div>
+  {report.media?.length > 0 ? (
+    <div className="space-y-2">
+      {report.media.map((item, index) => (
+        <a
+          key={`${item.path}-${index}`}
+          href={item.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block"
+        >
+          <img
+            src={item.url}
+            alt={`Bukti laporan ${report.id}`}
+            className="max-h-64 w-full object-contain bg-slate-100"
+          />
+        </a>
+      ))}
+    </div>
+  ) : (
+    <div className="flex min-h-24 items-center justify-center gap-2 bg-slate-100 text-slate-400">
+      <Camera className="h-6 w-6" />
+      <span className="text-xs">Belum ada foto bukti</span>
+    </div>
+  )}
+
+  <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-3 py-2.5">
+    <span className="truncate text-xs font-bold text-slate-600">
+      {report.media?.length > 0
+        ? `${report.media.length} foto bukti`
+        : "Bukti laporan"}
+    </span>
+    <span className="shrink-0 text-xs font-black text-brand">
+      Bukti warga
+    </span>
+  </div>
+</div>
                     </div>
                   )}
                 </article>

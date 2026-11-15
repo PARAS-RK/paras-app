@@ -53,6 +53,7 @@ function mapDatabaseReport(row, profile, region, category) {
         area: region?.subdistrict
             ? `Kel. ${region.subdistrict}`
             : '',
+        locationDetail: row.location_detail ?? '',
 
         date: new Date(row.created_at).toLocaleDateString('id-ID', {
             day: 'numeric',
@@ -83,7 +84,7 @@ function mapDatabaseReport(row, profile, region, category) {
     };
 }
 
-export function ReportProvider({ children, source = 'local' }) {
+export function ReportProvider({ children, source = 'local', regionId=null}) {
     const [reports, setReports] = useState(
         source === 'admin' ? [] : INITIAL_REPORTS
     );
@@ -151,10 +152,17 @@ export function ReportProvider({ children, source = 'local' }) {
         async function fetchReports() {
             const supabase = createClient();
 
-            const { data: rows, error } = await supabase
-                .from('reports')
-                .select('*')
-                .order('created_at', { ascending: false });
+            if (!regionId) {
+  console.error('Region ID Ketua PKK tidak ditemukan.');
+  if (isActive) setReports([]);
+  return;
+}
+
+const { data: rows, error } = await supabase
+  .from('reports')
+  .select('*')
+  .eq('region_id', regionId)
+  .order('created_at', { ascending: false });
 
             if (error) {
                 console.error('Gagal mengambil laporan:', error);
@@ -214,7 +222,39 @@ export function ReportProvider({ children, source = 'local' }) {
                 )
             );
 
-            setReports(mappedReports);
+            const mediaResponse = await fetch("/api/admin/reports/media", {
+  cache: "no-store",
+});
+
+let mediaRows = [];
+
+if (mediaResponse.ok) {
+  const mediaData = await mediaResponse.json();
+  mediaRows = mediaData.media ?? [];
+}
+
+const mediaByReport = new Map();
+
+mediaRows.forEach((item) => {
+  const key = String(item.report_id);
+
+  if (!mediaByReport.has(key)) {
+    mediaByReport.set(key, []);
+  }
+
+  mediaByReport.get(key).push({
+    url: item.url,
+    path: item.path_storage,
+    numberFile: item.number_file,
+  });
+});
+
+const reportsWithMedia = mappedReports.map((report) => ({
+  ...report,
+  media: mediaByReport.get(String(report.databaseId)) ?? [],
+}));
+
+setReports(reportsWithMedia);
         }
 
         fetchReports();
@@ -222,7 +262,7 @@ export function ReportProvider({ children, source = 'local' }) {
         return () => {
             isActive = false;
         };
-    }, [source]);
+    }, [source, regionId]);
 
     // Persetujuan untuk memulai proses penanganan laporan.
     function approveReport(id) {

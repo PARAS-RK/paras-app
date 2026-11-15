@@ -11,7 +11,7 @@ export default async function AdminPanelLayout({ children }) {
 
   return (
     <AdminProvider admin={admin}>
-      <ReportProvider source="admin">
+      <ReportProvider source="admin" regionId={admin.regionID}>
         <AdminShell>
           {children}
         </AdminShell>
