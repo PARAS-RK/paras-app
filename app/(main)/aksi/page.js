@@ -31,7 +31,7 @@ function AksiListContent() {
   const [loading, setLoading] = useState(true);
   const [aksiList, setAksiList] = useState([]);
   const [userStats, setUserStats] = useState({ streak: 0, points: 0, completed: 0, hideName: false });
-  const [userRegion, setUserRegion] = useState('Bandung, Jawa Barat');
+  const [userRegion, setUserRegion] = useState('Memuat wilayah...');
   const [rankings, setRankings] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
 
@@ -57,7 +57,6 @@ function AksiListContent() {
 
           const partIds = userParts.map((p) => p.participation_id).filter(Boolean);
 
-          // 1. Hitung total poin dari checklist tugas yang sudah dicentang
           let taskPointsSum = 0;
           if (partIds.length > 0) {
             const { data: progData } = await supabase
@@ -73,7 +72,6 @@ function AksiListContent() {
             }
           }
 
-          // 2. Hitung aksi yang sudah selesai (status 'selesai' atau sudah unggah bukti valid)
           const completedRecords = userParts.filter((p) => {
             const st = String(p.completion_action_status || '').trim().toLowerCase();
             const hasValidProof = proofParticipationIds.has(p.participation_id);
@@ -93,7 +91,6 @@ function AksiListContent() {
           return { points: totalPoints, completedCount: selesaiCount, streak: streakVal };
         };
 
-        // Ambil daftar participation_id yang sudah punya bukti foto valid
         const { data: allProofs } = await supabase
           .from('action_completion_proofs')
           .select('participation_id, photo_path');
@@ -108,7 +105,6 @@ function AksiListContent() {
         );
 
         if (user) {
-          // 1. Ambil profil user beserta relasi regions
           const { data: profileData, error: profErr } = await supabase
             .from('profiles')
             .select('*, regions(*)')
@@ -122,15 +118,16 @@ function AksiListContent() {
             activeRegionId = profileData.region_id || null;
 
             if (profileData.regions) {
-              const { subdistrict, district, city } = profileData.regions;
-              const formatted = [subdistrict, district, city].filter(Boolean).join(', ');
-              if (formatted) activeRegionName = formatted;
+              const reg = profileData.regions;
+              const parts = [reg.subdistrict, reg.district, reg.city].filter(Boolean);
+              if (parts.length > 0) {
+                activeRegionName = parts.join(', ');
+              }
             }
           }
 
           setUserRegion(activeRegionName);
 
-          // 2. Ambil catatan partisipasi user & hitung poin riilnya
           const { data: myPartRecords, error: partErr } = await supabase
             .from('action_participants')
             .select('*')
@@ -151,11 +148,17 @@ function AksiListContent() {
           });
         }
 
-        // 3. Ambil data aksi dari tabel community_actions
-        const { data: actionsData, error: actionsError } = await supabase
+        // AMBIL DATA AKSI BESERTA RELASI REGIONS & FILTER HANYA UNTUK WILAYAH USER TERSEBUT
+        let actionsQuery = supabase
           .from('community_actions')
-          .select('*')
+          .select('*, regions(subdistrict, district, city, province)')
           .order('created_at', { ascending: false });
+
+        if (activeRegionId) {
+          actionsQuery = actionsQuery.eq('region_id', activeRegionId);
+        }
+
+        const { data: actionsData, error: actionsError } = await actionsQuery;
 
         if (actionsError) throw actionsError;
 
@@ -186,12 +189,22 @@ function AksiListContent() {
 
             const isSelesai = userStatus && String(userStatus).trim().toLowerCase() === 'selesai';
 
+            // Ambil lokasi spesifik dari relasi regions milik aksi tersebut
+            let actionLocationName = activeRegionName;
+            if (item.regions) {
+              const reg = item.regions;
+              const parts = [reg.subdistrict, reg.district, reg.city].filter(Boolean);
+              if (parts.length > 0) {
+                actionLocationName = parts.join(', ');
+              }
+            }
+
             return {
               id: item.action_id,
               title: item.action_title,
               objective: item.action_description || 'Aksi peduli lingkungan sekitar.',
               category: 'lingkungan',
-              location: activeRegionName,
+              location: actionLocationName,
               status: isSelesai ? 'selesai' : 'aktif',
               startDate: item.action_start_date || 'Segera',
               target: 100,
@@ -207,7 +220,6 @@ function AksiListContent() {
 
         setAksiList(formattedAksi);
 
-        // 4. Ambil daftar warga di wilayah yang sama (filter berdasarkan region_id)
         let profilesQuery = supabase.from('profiles').select('*');
         if (activeRegionId) {
           profilesQuery = profilesQuery.eq('region_id', activeRegionId);
@@ -276,7 +288,6 @@ function AksiListContent() {
     fetchData();
   }, []);
 
-  // Fungsi toggle sembunyikan nama langsung ke Supabase
   const handleToggleHideName = async () => {
     const nextVal = !userStats.hideName;
     setUserStats((prev) => ({ ...prev, hideName: nextVal }));
@@ -542,7 +553,6 @@ function PeringkatSegment({ userStats, rankings, userRegion, onToggleHideName })
   const top = rankings.slice(0, 10);
   const myIndex = rankings.findIndex((r) => r.me);
   const noPoints = rankings.every((r) => r.points === 0);
-  const weeks = [true, true, true, false];
 
   const RankRow = ({ r, i }) => {
     const shouldHide = r.me ? userStats.hideName : r.hideName;
@@ -581,24 +591,6 @@ function PeringkatSegment({ userStats, rankings, userRegion, onToggleHideName })
           <Info className="h-4 w-4" aria-hidden /> Bagaimana cara kerjanya?
         </button>
 
-        <section className="flex items-center gap-4 rounded-2xl bg-white p-4 shadow-sm">
-          <Flame className="h-8 w-8 shrink-0 text-[#F97316]" aria-hidden />
-          <div className="flex-1">
-            <p className="font-bold">{userStats.streak} minggu beruntun</p>
-            <ul className="mt-2 flex gap-2" aria-label="4 minggu terakhir">
-              {weeks.map((ok, i) => (
-                <li
-                  key={i}
-                  className={cn('flex h-9 w-9 items-center justify-center rounded-full', ok ? 'bg-[#159038] text-white' : 'border-2 border-dashed border-[#9CA3AF] text-[#6B7280]')}
-                  aria-label={ok ? `Minggu ${i + 1}: berhasil` : 'Minggu ini: belum'}
-                >
-                  {ok ? <Check className="h-4 w-4" /> : <span className="text-xs font-semibold">Ini</span>}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </section>
-
         <button onClick={() => demoUnlockBadge(userStats.points)} disabled={!next} className={cn('min-h-11 rounded-lg border border-dashed border-[#D1D5DB] px-3 text-xs font-semibold text-[#6B7280] hover:bg-white disabled:opacity-50', focusRing)}>
           Demo: buka lencana
         </button>
@@ -610,7 +602,7 @@ function PeringkatSegment({ userStats, rankings, userRegion, onToggleHideName })
           <span>Poin</span>
         </div>
         {noPoints ? (
-          <p className="px-4 py-10 text-center text-[15px] text-[#374151]">Belum ada poin minggu ini di wilayahmu. Ayo ikut aksi pertamamu!</p>
+          <p className="px-4 py-10 text-center text-[15px] text-[#374151]">Belum ada poin tercatat di wilayahmu. Ayo ikut aksi pertamamu!</p>
         ) : (
           <>
             <ol className="divide-y divide-[#F3F4F6]">
@@ -639,7 +631,6 @@ function PeringkatSegment({ userStats, rankings, userRegion, onToggleHideName })
             {[
               '+10 poin untuk setiap tugas/checklist yang diselesaikan.',
               'Peringkat hanya untuk anggota di wilayahmu dan direset tiap Senin.',
-              'Streak naik jika ada minimal 1 tugas disetujui dalam seminggu.',
               'Lencana terbuka otomatis dari total poin: Penjaga Hijau (50), Penggerak Warga (100), dan Pelopor Aksi (120).',
             ].map((t, i) => (
               <li key={i} className="flex gap-3">
