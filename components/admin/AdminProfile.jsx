@@ -2,8 +2,9 @@
 
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
-import { USERS } from "@/lib/users";
-import { initialProfile } from "./profile/constants";
+import { USERS } from "@/lib/users"; // SEMENTARA: kandidat serah terima masih data contoh
+import { useAdmin } from "@/context/AdminContext";
+import { useProfileForm } from "@/hooks/useProfileForm";
 import ProfileSummary from "./profile/ProfileSummary";
 import ProfileDataCard from "./profile/ProfileDataCard";
 import SecuritySection from "./profile/SecuritySection";
@@ -16,10 +17,9 @@ import DangerZone from "./profile/DangerZone";
 
 export default function AdminProfile() {
   const router = useRouter();
-  const [profile, setProfile] = useState(initialProfile);
-  const [draft, setDraft] = useState(initialProfile);
-  const [editing, setEditing] = useState(false);
-  const [photo, setPhoto] = useState(null);
+  const admin = useAdmin();
+  const form = useProfileForm();
+  const [photo, setPhoto] = useState(null); // pratinjau saja, belum tersimpan
   const [transferOpen, setTransferOpen] = useState(false);
   const [successMember, setSuccessMember] = useState(null);
   const [securityModal, setSecurityModal] = useState(null); // null | "password" | "email"
@@ -29,21 +29,8 @@ export default function AdminProfile() {
     (user) =>
       user.status === "active" &&
       (user.type === "pkk_member" || user.type === "pkk_chair") &&
-      user.email !== profile.email
+      user.email !== admin.email
   );
-
-  /* ---------- Edit profil ---------- */
-  const startEdit = useCallback(() => setEditing(true), []);
-
-  const cancelEdit = useCallback(() => {
-    setDraft(profile);
-    setEditing(false);
-  }, [profile]);
-
-  const saveProfile = useCallback(() => {
-    setProfile(draft);
-    setEditing(false);
-  }, [draft]);
 
   /* ---------- Serah terima jabatan ---------- */
   const openTransfer = useCallback(() => setTransferOpen(true), []);
@@ -80,10 +67,7 @@ export default function AdminProfile() {
     setSecurityNotice("Kata sandi berhasil diperbarui.");
   }, []);
 
-  // Pakai bentuk fungsi (prev => ...) supaya tidak perlu memasukkan profile/draft ke dependensi
-  const handleEmailSuccess = useCallback((newEmail) => {
-    setProfile((prev) => ({ ...prev, email: newEmail }));
-    setDraft((prev) => ({ ...prev, email: newEmail }));
+  const handleEmailSuccess = useCallback(() => {
     setSecurityModal(null);
     setSecurityNotice(
       "Email berhasil diperbarui. Kami juga mengirim pemberitahuan ke email lama Anda."
@@ -100,20 +84,22 @@ export default function AdminProfile() {
       </header>
 
       <div className="grid items-start gap-6 lg:grid-cols-[340px_1fr]">
-        <ProfileSummary profile={profile} photo={photo} onPhotoChange={setPhoto} />
+        <ProfileSummary photo={photo} onPhotoChange={setPhoto} />
 
         <div className="space-y-6">
           <ProfileDataCard
-            profile={profile}
-            draft={draft}
-            setDraft={setDraft}
-            editing={editing}
-            onEdit={startEdit}
-            onCancel={cancelEdit}
-            onSave={saveProfile}
+            profile={form.profile}
+            draft={form.draft}
+            setDraft={form.setDraft}
+            editing={form.editing}
+            saving={form.saving}
+            error={form.error}
+            onEdit={form.startEdit}
+            onCancel={form.cancelEdit}
+            onSave={form.save}
           />
           <SecuritySection
-            email={profile.email}
+            email={admin.email}
             notice={securityNotice}
             onCloseNotice={closeNotice}
             onChangePassword={openPasswordModal}
@@ -139,7 +125,7 @@ export default function AdminProfile() {
       )}
       {securityModal === "email" && (
         <ChangeEmailModal
-          currentEmail={profile.email}
+          currentEmail={admin.email}
           onClose={closeSecurity}
           onSuccess={handleEmailSuccess}
         />

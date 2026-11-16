@@ -8,6 +8,8 @@ export default function ProfileDataCard({
   draft,
   setDraft,
   editing,
+  saving,
+  error,
   onEdit,
   onCancel,
   onSave,
@@ -29,39 +31,49 @@ export default function ProfileDataCard({
             <button
               type="button"
               onClick={onCancel}
-              className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50"
+              disabled={saving}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50"
             >
               Batal
             </button>
             <button
               type="button"
               onClick={onSave}
-              className="rounded-xl bg-brand px-3 py-2 text-xs font-black text-white hover:bg-brand-dark"
+              disabled={saving}
+              className="rounded-xl bg-brand px-3 py-2 text-xs font-black text-white hover:bg-brand-dark disabled:opacity-50"
             >
-              Simpan
+              {saving ? "Menyimpan..." : "Simpan"}
             </button>
           </div>
         )}
       </div>
 
+      {error && (
+        <p role="alert" className="mx-5 mt-4 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700">
+          {error}
+        </p>
+      )}
+
       <div className="divide-y divide-slate-100">
-        {profileFields.map(({ key, label, icon: Icon, type }) => (
+        {profileFields.map(({ key, label, icon: Icon, type, editable }) => (
           <label key={key} className="flex gap-3 px-5 py-4">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
               <Icon className="h-5 w-5" />
             </span>
             <span className="min-w-0 flex-1">
               <span className="block text-xs font-bold text-slate-400">{label}</span>
-              {editing ? (
+              {editing && editable ? (
                 <input
                   type={type}
-                  value={draft[key]}
+                  value={draft[key] ?? ""}
                   onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}
+                  inputMode={key === "rt" || key === "rw" ? "numeric" : undefined}
+                  maxLength={key === "name" ? 100 : key === "rt" || key === "rw" ? 3 : 16}
                   className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:border-brand focus:ring-2 focus:ring-brand/10"
                 />
               ) : (
                 <span className="mt-1 block text-sm font-semibold text-slate-800">
-                  {profile[key]}
+                  {profile[key] || "-"}
                 </span>
               )}
             </span>

@@ -1,9 +1,12 @@
 "use client";
 
 import { Camera, ShieldCheck, Users } from "lucide-react";
-import { defaultProfilePhoto } from "./constants";
+import { useAdmin } from "@/context/AdminContext";
 
-export default function ProfileSummary({ profile, photo, onPhotoChange }) {
+export default function ProfileSummary({ photo, onPhotoChange }) {
+  const admin = useAdmin();
+  const avatar = photo || admin.avatarUrl;
+
   return (
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:sticky lg:top-24">
       <div className="bg-brand px-5 pb-14 pt-5">
@@ -14,12 +17,18 @@ export default function ProfileSummary({ profile, photo, onPhotoChange }) {
 
       <div className="-mt-10 px-5 pb-6 text-center">
         <div className="relative mx-auto w-fit">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={photo || defaultProfilePhoto}
-            alt={`Foto profil ${profile.name}`}
-            className="h-24 w-24 rounded-full border-4 border-white object-cover shadow"
-          />
+          {avatar ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={avatar}
+              alt={`Foto profil ${admin.name}`}
+              className="h-24 w-24 rounded-full border-4 border-white object-cover shadow"
+            />
+          ) : (
+            <span className="flex h-24 w-24 items-center justify-center rounded-full border-4 border-white bg-brand-light text-3xl font-black text-brand shadow">
+              {admin.initials}
+            </span>
+          )}
           <label
             className="absolute -bottom-1 -right-1 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-slate-900 text-white shadow hover:bg-slate-700"
             aria-label="Ubah foto profil"
@@ -37,13 +46,13 @@ export default function ProfileSummary({ profile, photo, onPhotoChange }) {
           </label>
         </div>
 
-        <h2 className="mt-4 text-xl font-black text-slate-900">{profile.name}</h2>
+        <h2 className="mt-4 text-xl font-black text-slate-900">{admin.name}</h2>
         <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-brand-light px-2.5 py-1 text-xs font-black text-brand-dark">
           <ShieldCheck className="h-3.5 w-3.5" /> Ketua
         </span>
-        <p className="mt-4 text-sm font-black text-slate-800">TP PKK Kelurahan Kebayoran Baru</p>
+        <p className="mt-4 text-sm font-black text-slate-800">{admin.unitName}</p>
         <p className="mt-2 inline-flex items-center gap-1.5 text-sm text-slate-500">
-          <Users className="h-4 w-4 text-brand" /> 48 anggota
+          <Users className="h-4 w-4 text-brand" /> {admin.memberCount} anggota
         </p>
       </div>
     </section>

@@ -6,9 +6,11 @@ import { checkAdmin } from "@/lib/auth/admin";
 
 const MESSAGES = {
   not_admin: "Akun ini tidak memiliki akses admin",
-  inactive: "Akun Anda tidak aktif. Hubungi pengelola.",
+  inactive: "Akun Anda belum aktif. Pastikan email sudah dikonfirmasi.",
+  leader_pending: "Akun Ketua Anda belum terverifikasi. Hubungi pengelola.",
   no_unit: "Akun Anda belum terhubung ke unit PKK",
   unverified: "Unit PKK Anda belum terverifikasi",
+  db_error: "Terjadi kesalahan sistem. Coba lagi beberapa saat.",
   not_logged_in: "Email atau kata sandi salah",
 };
 
