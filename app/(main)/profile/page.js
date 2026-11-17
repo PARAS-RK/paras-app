@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Mail, Phone, MapPin, ShieldCheck, LogOut, Bell, Lock, FileText, Leaf, Award, Flame, Pencil, HelpCircle, EyeOff, Trash2, Loader2 } from 'lucide-react';
+import { Mail, Phone, MapPin, ShieldCheck, LogOut, Bell, Lock, FileText, Leaf, Award, Pencil, HelpCircle, EyeOff, Trash2, Loader2 } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 import { useReportContext } from '../../../context/ReportContext';
 import { useAksiState, toggleHideName } from '../../../lib/aksiStore';
@@ -13,6 +13,7 @@ import { createClient } from '../../../lib/supabase/client';
 import EditProfileModal from '../../../components/profile/EditProfileModal';
 import PasswordForm from '../../../components/profile/PasswordForm';
 import { Toggle, Row } from '../../../components/profile/ProfileUI';
+import { LogoutConfirmModal, DeleteAccountModal } from '../../../components/profile/AccountActionModals';
 
 const card = 'rounded-2xl border border-border bg-white shadow-sm';
 const sectionLabel = 'px-5 pt-5 pb-2 text-xs font-black uppercase tracking-widest text-muted-foreground';
@@ -24,7 +25,7 @@ export default function Profile() {
   const [loadingUser, setLoadingUser] = useState(true);
 
   const [isEditOpen, setIsEditOpen] = useState(false);
-  const [userStats, setUserStats] = useState({ completed: 0, points: 0, streak: 0, activeJoined: 0 });
+  const [userStats, setUserStats] = useState({ completed: 0, points: 0, activeJoined: 0 });
   const [profileData, setProfileData] = useState({
     full_name: 'Warga PARAS',
     email: '',
@@ -37,27 +38,26 @@ export default function Profile() {
     province: '',
     rt: '',
     rw: '',
-    pkkStatus: 'verified',
-    pkkRole: 'PKK',
-    joinedDate: 'September 2024',
+    pkkStatus: 'pending',
+    pkkRole: 'Warga',
+    joinedDate: '',
   });
 
   useEffect(() => {
     const fetchProfileAndStats = async () => {
       try {
         const supabase = createClient();
-        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
 
         if (authError || !user) {
           router.push('/login');
           return;
         }
 
-        const { data: dataProfile, error: profileError } = await supabase
-          .from('profiles')
-          .select('*, regions(*)')
-          .eq('user_id', user.id)
-          .maybeSingle();
+        const { data: dataProfile, error: profileError } = await supabase.from('profiles').select('*, regions(*)').eq('user_id', user.id).maybeSingle();
 
         if (dataProfile && !profileError) {
           setProfileData({
@@ -72,19 +72,14 @@ export default function Profile() {
             province: dataProfile.regions?.province || '',
             rt: dataProfile.rt || '',
             rw: dataProfile.rw || '',
-            pkkStatus: dataProfile.account_status || 'verified',
-            pkkRole: dataProfile.account_category || 'PKK',
-            joinedDate: dataProfile.created_at
-              ? new Date(dataProfile.created_at).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
-              : 'September 2024',
+            pkkStatus: dataProfile.account_status || 'pending',
+            pkkRole: dataProfile.account_category === 'anggota_pkk' ? 'Anggota PKK' : 'Warga',
+            joinedDate: dataProfile.created_at ? new Date(dataProfile.created_at).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }) : '',
           });
         }
 
         // Ambil daftar partisipasi user & bukti foto valid agar sinkron dengan halaman Aksi
-        const [{ data: partRecords }, { data: allProofs }] = await Promise.all([
-          supabase.from('action_participants').select('*').eq('user_id', user.id),
-          supabase.from('action_completion_proofs').select('participation_id, photo_path'),
-        ]);
+        const [{ data: partRecords }, { data: allProofs }] = await Promise.all([supabase.from('action_participants').select('*').eq('user_id', user.id), supabase.from('action_completion_proofs').select('participation_id, photo_path')]);
 
         const validProofPartIds = new Set(
           (allProofs || [])
@@ -92,7 +87,7 @@ export default function Profile() {
               const path = String(pr.photo_path || '').trim();
               return path.startsWith('data:image/') || path.startsWith('http://') || path.startsWith('https://');
             })
-            .map((pr) => pr.participation_id)
+            .map((pr) => pr.participation_id),
         );
 
         const records = partRecords || [];
@@ -101,10 +96,7 @@ export default function Profile() {
         // 1. Hitung total poin murni dari checklist yang sudah selesai
         let taskPointsSum = 0;
         if (partIds.length > 0) {
-          const { data: progData } = await supabase
-            .from('action_task_progress')
-            .select('participation_id, action_tasks(points)')
-            .in('participation_id', partIds);
+          const { data: progData } = await supabase.from('action_task_progress').select('participation_id, action_tasks(points)').in('participation_id', partIds);
 
           if (progData && progData.length > 0) {
             taskPointsSum = progData.reduce((sum, item) => {
@@ -116,7 +108,9 @@ export default function Profile() {
 
         // 2. Hitung jumlah aksi selesai & aksi aktif diikuti
         const completedRecords = records.filter((p) => {
-          const st = String(p.completion_action_status || '').trim().toLowerCase();
+          const st = String(p.completion_action_status || '')
+            .trim()
+            .toLowerCase();
           const hasValidProof = validProofPartIds.has(p.participation_id);
           return st === 'selesai' || st === 'done' || st === 'completed' || hasValidProof;
         });
@@ -125,22 +119,11 @@ export default function Profile() {
         const activeJoinedCount = Math.max(records.length - completedCount, 0);
 
         const storedPoints = records.reduce((sum, r) => sum + (r.leaderboard_point || 0), 0);
-        let userPoints = Math.max(taskPointsSum, storedPoints);
-
-        let userStreak =
-          completedCount > 0
-            ? Math.max(...completedRecords.map((r) => r.streak_action || 1), 1)
-            : 0;
-
-        if (dataProfile) {
-          if ((dataProfile.points || 0) > userPoints) userPoints = dataProfile.points;
-          if ((dataProfile.streak || 0) > userStreak) userStreak = dataProfile.streak;
-        }
+        const userPoints = Math.max(taskPointsSum, storedPoints);
 
         setUserStats({
           completed: completedCount,
           points: userPoints,
-          streak: userStreak,
           activeJoined: activeJoinedCount,
         });
       } catch (err) {
@@ -163,17 +146,47 @@ export default function Profile() {
   const [notif, setNotif] = useState({ cuaca: true, laporan: true, aksi: true, wa: false });
   const [openPwd, setOpenPwd] = useState(false);
   const [openNotif, setOpenNotif] = useState(false);
+  const [showLogout, setShowLogout] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
-  const handleDeleteAccount = async () => {
-    if (window.confirm('Apakah Anda yakin ingin menghapus akun?')) {
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    try {
       const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        await supabase.from('profiles').delete().eq('user_id', user.id);
-        await supabase.auth.signOut();
-        localStorage.removeItem('paras-authenticated');
-        router.push('/');
+      await supabase.auth.signOut();
+      localStorage.removeItem('paras-authenticated');
+      window.location.assign('/');
+    } catch (err) {
+      console.error('Gagal keluar:', err);
+      setLoggingOut(false);
+      setShowLogout(false);
+    }
+  };
+
+  const handleDeleteAccount = async (confirmText) => {
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      const res = await fetch('/api/account', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: confirmText }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${res.status}`);
       }
+      const supabase = createClient();
+      await supabase.auth.signOut({ scope: 'local' }); // user sudah tidak ada, cukup bersihkan cookie lokal
+      localStorage.removeItem('paras-authenticated');
+      window.location.assign('/');
+    } catch (err) {
+      console.error('Gagal menghapus akun:', err);
+      setDeleteError(`Gagal menghapus akun: ${err.message}`);
+      setDeleting(false);
     }
   };
 
@@ -184,7 +197,6 @@ export default function Profile() {
     { icon: FileText, value: mine.length, label: 'Laporan dikirim', sub: `${inProgress} diproses`, to: '/reports' },
     { icon: Leaf, value: userStats.completed, label: 'Aksi selesai', sub: `${userStats.activeJoined} diikuti`, to: '/aksi' },
     { icon: Award, value: userStats.points, label: 'Poin', sub: 'Level Tunas', to: '/aksi?seg=peringkat' },
-    { icon: Flame, value: userStats.streak, label: 'Minggu beruntun', sub: 'Pertahankan!', to: '/aksi?seg=peringkat' },
   ];
 
   const notifItems = [
@@ -194,7 +206,15 @@ export default function Profile() {
     { k: 'wa', t: 'Kirim juga lewat WhatsApp', s: profileData.phone || profileData.phone_number || '-' },
   ];
 
-  const getInitials = (name) => (name ? name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() : 'WJ');
+  const getInitials = (name) =>
+    name
+      ? name
+          .split(' ')
+          .map((n) => n[0])
+          .join('')
+          .slice(0, 2)
+          .toUpperCase()
+      : 'WJ';
 
   if (loadingUser) {
     return (
@@ -218,9 +238,7 @@ export default function Profile() {
                 {profileData.avatar_url ? (
                   <img src={profileData.avatar_url} alt="Foto Profil" className="h-20 w-20 rounded-full border-4 border-white object-cover shadow" />
                 ) : (
-                  <span className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-white bg-brand-light text-2xl font-black text-brand shadow">
-                    {getInitials(profileData.full_name)}
-                  </span>
+                  <span className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-white bg-brand-light text-2xl font-black text-brand shadow">{getInitials(profileData.full_name)}</span>
                 )}
                 <button
                   type="button"
@@ -231,18 +249,16 @@ export default function Profile() {
                 </button>
               </div>
               <p className="mt-3 text-xl font-black text-foreground">{profileData.full_name}</p>
-              {profileData.pkkStatus === 'verified' && (
+              {profileData.pkkStatus === 'active' && profileData.pkkRole === 'Anggota PKK' && (
                 <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-brand-light px-2.5 py-1 text-xs font-bold text-brand">
                   <ShieldCheck className="h-3.5 w-3.5" /> {profileData.pkkRole} Terverifikasi
                 </span>
               )}
               <p className="mt-3 flex items-start gap-1.5 text-sm text-muted-foreground">
                 <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
-                {profileData.kelurahan
-                  ? `${profileData.kelurahan}, ${profileData.kecamatan}, ${profileData.city} (RT ${profileData.rt || '-'}/RW ${profileData.rw || '-'})`
-                  : 'Atur lokasi domisili'}
+                {profileData.kelurahan ? `${profileData.kelurahan}, ${profileData.kecamatan}, ${profileData.city} (RT ${profileData.rt || '-'}/RW ${profileData.rw || '-'})` : 'Atur lokasi domisili'}
               </p>
-              <p className="mt-1 text-xs text-muted-foreground">Bergabung sejak {profileData.joinedDate}</p>
+              {profileData.joinedDate && <p className="mt-1 text-xs text-muted-foreground">Bergabung sejak {profileData.joinedDate}</p>}
             </div>
             <div className="border-t border-border">
               <Row icon={Mail} title="Email" sub={profileData.email} />
@@ -291,21 +307,21 @@ export default function Profile() {
           <section className={card}>
             <h2 className={sectionLabel}>Bantuan & Keamanan Akun</h2>
             <Row icon={HelpCircle} title="Pusat Bantuan" sub="Panduan memakai PARAS" onClick={() => router.push('/chatbot')} />
-            <button
-              onClick={async () => {
-                const supabase = createClient();
-                await supabase.auth.signOut();
-                localStorage.removeItem('paras-authenticated');
-                router.push('/');
-              }}
-              className="flex w-full items-center gap-3 border-t border-border px-5 py-3.5 text-left hover:bg-muted/60"
-            >
+
+            <button onClick={() => setShowLogout(true)} className="flex w-full items-center gap-3 border-t border-border px-5 py-3.5 text-left hover:bg-muted/60">
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
                 <LogOut className="h-5 w-5 text-foreground/70" />
               </span>
               <span className="text-[15px] font-bold">Keluar dari Akun</span>
             </button>
-            <button onClick={handleDeleteAccount} className="flex w-full items-center gap-3 border-t border-border px-5 py-3.5 text-left text-red-600 hover:bg-red-50">
+
+            <button
+              onClick={() => {
+                setDeleteError('');
+                setShowDelete(true);
+              }}
+              className="flex w-full items-center gap-3 border-t border-border px-5 py-3.5 text-left text-red-600 hover:bg-red-50"
+            >
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-50">
                 <Trash2 className="h-5 w-5 text-red-600" />
               </span>
@@ -316,6 +332,9 @@ export default function Profile() {
       </div>
 
       <EditProfileModal isOpen={isEditOpen} onClose={() => setIsEditOpen(false)} currentProfile={profileData} onSuccess={(updated) => setProfileData((prev) => ({ ...prev, ...updated }))} />
+
+      <LogoutConfirmModal open={showLogout} loading={loggingOut} onClose={() => setShowLogout(false)} onConfirm={handleLogout} />
+      <DeleteAccountModal open={showDelete} loading={deleting} email={profileData.email} error={deleteError} onClose={() => setShowDelete(false)} onConfirm={handleDeleteAccount} />
     </div>
   );
 }
