@@ -5,7 +5,7 @@ import { ProfileProvider } from "@/context/ProfileContext";
 import AdminProfile from "@/components/admin/AdminProfile";
 
 export const instant = false;
-export const metadata = { title: "Profil | PARAS" };
+export const metadata = { title: "Profil Admin | PARAS" };
 
 export default async function AdminProfilePage() {
   const admin = await getAdminSession();
