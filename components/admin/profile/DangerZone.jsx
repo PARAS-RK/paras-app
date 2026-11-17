@@ -27,12 +27,10 @@ export default function DangerZone() {
       </div>
 
       {notice && (
-        <div
-          role="alert"
-          className="mt-4 flex items-start justify-between gap-3 rounded-xl border border-red-200 bg-white p-4"
-        >
+        <div role="alert" className="mt-4 flex items-start justify-between gap-3 rounded-xl border border-red-200 bg-white p-4">
           <p className="text-sm font-bold leading-relaxed text-red-700">
-            Anda masih menjabat sebagai Ketua. Serahkan jabatan terlebih dahulu sebelum menghapus akun.
+            Anda masih menjabat sebagai Ketua. Serahkan jabatan terlebih dahulu. Setelah itu akun dapat
+            dihapus dari halaman profil.
           </p>
           <button
             type="button"

@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { useAdmin } from "@/context/AdminContext";
 import logo from "@/public/logo_paras_1.png";
 import AdminNotifications from "./AdminNotifications";
+import AdminAvatar from "./AdminAvatar";
 
 const navItems = [
   { name: "Dashboard", path: "/admin", icon: LayoutDashboard, exact: true },
@@ -82,9 +83,7 @@ function Sidebar({ mobile = false, pathname, onNavigate, onClose }) {
       {/* Footer sidebar */}
       <div className="shrink-0 space-y-2 border-t border-slate-800 p-4">
         <div className="flex items-center gap-3 px-2 py-1.5">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-black text-white">
-            {admin.initials}
-          </div>
+          <AdminAvatar className="h-8 w-8 text-xs" />
           <div className="min-w-0">
             <p className="truncate text-xs font-bold text-white">{admin.name}</p>
             <p className="truncate text-xs text-slate-500">{admin.email}</p>
@@ -92,14 +91,14 @@ function Sidebar({ mobile = false, pathname, onNavigate, onClose }) {
         </div>
 
         <form action="/auth/signout" method="post">
-          <input type="hidden" name="next" value="/admin/login" />
-          <button
-            type="submit"
-            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-red-950 hover:text-red-400"
-          >
-            <LogOut className="h-4 w-4" /> Keluar
-          </button>
-        </form>
+          <input type="hidden" name="next" value="/login" />
+            <button
+              type="submit"
+              className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-red-950 hover:text-red-400"
+            >
+              <LogOut className="h-4 w-4" /> Keluar
+            </button>
+        </form>      
       </div>
     </aside>
   );
@@ -160,9 +159,7 @@ export default function AdminShell({ children }) {
             <AdminNotifications />
             
             <div className="flex items-center gap-2 border-l border-slate-200 pl-3">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-black text-white">
-                {admin.initials}
-              </div>
+              <AdminAvatar className="h-8 w-8 text-xs" />
               <div className="hidden xl:block">
                 <p className="text-xs font-black text-slate-800">{admin.name}</p>
                 <p className="text-xs text-slate-400">Ketua PKK {admin.areaLabel}</p>

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { cn } from "@/lib/utils";
+import { changePassword } from "@/lib/profile/actions";
 import SecurityDialog from "./SecurityDialog";
 import PasswordInput from "./PasswordInput";
 import { passwordStrength } from "./helpers";
@@ -9,7 +10,8 @@ import { passwordStrength } from "./helpers";
 export default function ChangePasswordModal({ onClose, onSuccess }) {
   const [form, setForm] = useState({ old: "", next: "", confirm: "" });
   const [visible, setVisible] = useState({ old: false, next: false, confirm: false });
-  const [oldError, setOldError] = useState(false);
+  const [error, setError] = useState("");
+  const [pending, startTransition] = useTransition();
 
   const mismatch = Boolean(form.confirm && form.next !== form.confirm);
   const strength = passwordStrength(form.next);
@@ -17,37 +19,33 @@ export default function ChangePasswordModal({ onClose, onSuccess }) {
 
   function submit(event) {
     event.preventDefault();
-    if (!canSave) return;
-    // SEMENTARA: password contoh dari Figma. Nanti diganti verifikasi lewat Supabase.
-    if (form.old !== "admin123") {
-      setOldError(true);
-      return;
-    }
-    onSuccess();
+    if (!canSave || pending) return;
+    setError("");
+    startTransition(async () => {
+      const result = await changePassword(form.old, form.next);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      onSuccess();
+    });
   }
 
   return (
     <SecurityDialog title="Ubah Kata Sandi" onClose={onClose}>
       <form onSubmit={submit} className="space-y-4 p-5">
-        <div>
-          <PasswordInput
-            id="old-password"
-            label="Kata sandi lama"
-            value={form.old}
-            onChange={(value) => {
-              setForm({ ...form, old: value });
-              setOldError(false);
-            }}
-            visible={visible.old}
-            onToggle={() => setVisible({ ...visible, old: !visible.old })}
-            autoComplete="current-password"
-          />
-          {oldError && (
-            <p className="mt-1 text-xs font-bold text-red-600" role="alert">
-              Kata sandi lama salah
-            </p>
-          )}
-        </div>
+        <PasswordInput
+          id="old-password"
+          label="Kata sandi lama"
+          value={form.old}
+          onChange={(value) => {
+            setForm({ ...form, old: value });
+            setError("");
+          }}
+          visible={visible.old}
+          onToggle={() => setVisible({ ...visible, old: !visible.old })}
+          autoComplete="current-password"
+        />
 
         <div>
           <PasswordInput
@@ -88,6 +86,12 @@ export default function ChangePasswordModal({ onClose, onSuccess }) {
           )}
         </div>
 
+        {error && (
+          <p className="rounded-xl bg-red-50 p-3 text-xs font-bold text-red-700" role="alert">
+            {error}
+          </p>
+        )}
+
         <div className="grid grid-cols-2 gap-2 pt-1">
           <button
             type="button"
@@ -98,10 +102,10 @@ export default function ChangePasswordModal({ onClose, onSuccess }) {
           </button>
           <button
             type="submit"
-            disabled={!canSave}
+            disabled={!canSave || pending}
             className="rounded-xl bg-brand px-4 py-3 text-sm font-black text-white hover:bg-brand-dark disabled:cursor-not-allowed disabled:bg-slate-300"
           >
-            Simpan
+            {pending ? "Menyimpan..." : "Simpan"}
           </button>
         </div>
       </form>
