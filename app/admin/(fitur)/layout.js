@@ -7,11 +7,17 @@ import AdminNotifications from "@/components/admin/AdminNotifications";
 
 export default async function AdminPanelLayout({ children }) {
   const admin = await getAdminSession();
+  console.log("ADMIN SESSION:", {
+  name: admin?.name,
+  userId: admin?.userId,
+  unitId: admin?.unitId,
+  regionID: admin?.regionID,
+});
   if (!admin) redirect("/admin/login");
 
   return (
     <AdminProvider admin={admin}>
-      <ReportProvider source="admin">
+      <ReportProvider source="admin" regionId={admin.regionID}>
         <AdminShell>
           {children}
         </AdminShell>
