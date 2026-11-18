@@ -7,9 +7,7 @@ openpyxl
 scikit-learn
 sentence-transformers
 chromadb
-<<<<<<< HEAD
 google-genai
+requests
 supabase
-=======
-google-genai
->>>>>>> 8699b996622f93c1792104e66a1334d1b8416ec3
+

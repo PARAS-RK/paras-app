@@ -1,14 +1,36 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import { CheckCircle2, KeyRound, Mail, X } from "lucide-react";
+import { useAdmin } from "@/context/AdminContext";
+import ChangePasswordModal from "./ChangePasswordModal";
+import ChangeEmailModal from "./ChangeEmailModal";
 
-export default function SecuritySection({
-  email,
-  notice,
-  onCloseNotice,
-  onChangePassword,
-  onChangeEmail,
-}) {
+export default function SecuritySection() {
+  const { email } = useAdmin();
+  const [modal, setModal] = useState(null); // null | "password" | "email"
+  const [notice, setNotice] = useState("");
+
+  const openPassword = useCallback(() => {
+    setNotice("");
+    setModal("password");
+  }, []);
+  const openEmail = useCallback(() => {
+    setNotice("");
+    setModal("email");
+  }, []);
+  const close = useCallback(() => setModal(null), []);
+  const closeNotice = useCallback(() => setNotice(""), []);
+
+  const passwordDone = useCallback(() => {
+    setModal(null);
+    setNotice("Kata sandi berhasil diperbarui. Perangkat lain telah dikeluarkan.");
+  }, []);
+  const emailDone = useCallback(() => {
+    setModal(null);
+    setNotice("Email berhasil diperbarui.");
+  }, []);
+
   return (
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-100 px-5 py-4">
@@ -24,7 +46,7 @@ export default function SecuritySection({
           <span className="flex-1">{notice}</span>
           <button
             type="button"
-            onClick={onCloseNotice}
+            onClick={closeNotice}
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-brand hover:bg-brand-light"
             aria-label="Tutup pesan"
           >
@@ -40,11 +62,11 @@ export default function SecuritySection({
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-black text-slate-900">Kata Sandi</p>
-            <p className="mt-0.5 text-xs text-slate-500">Terakhir diubah 3 bulan lalu</p>
+            <p className="mt-0.5 text-xs text-slate-500">Perbarui sandi secara berkala</p>
           </div>
           <button
             type="button"
-            onClick={onChangePassword}
+            onClick={openPassword}
             className="rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-black text-slate-700 hover:bg-slate-50"
           >
             Ubah Kata Sandi
@@ -61,13 +83,16 @@ export default function SecuritySection({
           </div>
           <button
             type="button"
-            onClick={onChangeEmail}
+            onClick={openEmail}
             className="rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-black text-slate-700 hover:bg-slate-50"
           >
             Ubah Email
           </button>
         </div>
       </div>
+
+      {modal === "password" && <ChangePasswordModal onClose={close} onSuccess={passwordDone} />}
+      {modal === "email" && <ChangeEmailModal onClose={close} onSuccess={emailDone} />}
     </section>
   );
 }

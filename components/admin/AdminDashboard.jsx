@@ -51,7 +51,7 @@ function MetricCard({ label, value, icon: Icon, tone, emergency }) {
   );
 }
 
-export default function AdminDashboard() {
+export default function AdminDashboard({ userCounts }) {
   const [rejectingReport, setRejectingReport] = useState(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const { areaLabel, areaFull } = useAdmin();
@@ -61,27 +61,21 @@ export default function AdminDashboard() {
   const [reportTab, setReportTab] = useState("all");
   const [expandedReportId, setExpandedReportId] = useState(null);
   const [routingNotice, setRoutingNotice] = useState("");
-  const scopedUsers = USERS.filter((user) => user.area === areaLabel);
   const scopedReports = reports.filter(
     (report) =>
         report.area.replace(/^Kel\.\s*/, '').trim() ===
         areaLabel.replace(/^Kel\.\s*/, '').trim()
-);
-console.log('AREA LABEL:', areaLabel);
-console.log('REPORT AREA:', reports.map(r => r.area));
-console.log('SCOPED REPORTS:', scopedReports);
+  );
+  
+  console.log('AREA LABEL:', areaLabel);
+  console.log('REPORT AREA:', reports.map(r => r.area));
+  console.log('SCOPED REPORTS:', scopedReports);
+  
   const activeReports = scopedReports.filter(
     (report) => report.status === "pending" || report.status === "in_progress"
   );
   const emergencyReports = scopedReports.filter((report) => report.handledBy === 'bpbd' && (report.status === 'pending' || report.status === 'in_progress'));
   const completedActions = aksi.aksi.filter((item) => item.location === areaLabel && item.status === "selesai").length;
-  const activePkkMembers = scopedUsers.filter(
-    (user) => user.status === "active" && (user.type === "pkk_member" || user.type === "pkk_chair")
-  ).length;
-  const activeCitizens = scopedUsers.filter(
-    (user) => user.status === "active" && user.type === "general"
-  ).length;
-
   const dashboardReports = scopedReports.map((report) => ({
     ...report,
     area: areaLabel,
@@ -194,8 +188,11 @@ async function overrideReport(report) {
       </header>
 
       <section className="grid grid-cols-2 gap-4 lg:grid-cols-4" aria-label="Ringkasan metrik">
-        <MetricCard label="Anggota PKK Aktif" value={activePkkMembers} icon={Users} tone="bg-brand-xlight text-brand" />
-        <MetricCard label="Warga Aktif" value={activeCitizens} icon={UserRound} tone="bg-blue-50 text-blue-600" />
+        <Link href="/admin/manajemen-pengguna" aria-label="Buka Manajemen Pengguna">
+          <MetricCard label="Anggota PKK Aktif" value={userCounts.pkk} icon={Users} tone="bg-brand-xlight text-brand" />
+          <MetricCard label="Warga Aktif" value={userCounts.citizens} icon={UserRound} tone="bg-blue-50 text-blue-600" />
+        </Link>
+
         <MetricCard label="Laporan Darurat / Aktif" value={emergencyReports.length} icon={ShieldAlert} tone="bg-red-50 text-red-600" emergency />
         <MetricCard label="Aksi Selesai" value={completedActions} icon={CheckCircle2} tone="bg-brand-xlight text-brand" />
       </section>

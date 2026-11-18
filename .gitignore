@@ -44,6 +44,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+#backend
+*.pyc
+.venv/
+
 #database
 __pycache__/
 backend/data/chroma/

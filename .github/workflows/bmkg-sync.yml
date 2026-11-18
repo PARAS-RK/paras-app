@@ -1,0 +1,36 @@
+name: BMKG sync
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # peringatan dini + gempa (UTC)
+    - cron: "5 */3 * * *"    # prakiraan cuaca
+  workflow_dispatch:
+    inputs:
+      jobs:
+        description: "Pilih: cuaca, peringatan, gempa (gempa = gempa dirasakan + gempa besar)"
+        default: "cuaca,peringatan,gempa"
+
+concurrency:
+  group: bmkg-sync-${{ github.event.schedule || 'manual' }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r backend/requirements.txt
+      - name: Jalankan sinkronisasi
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: gemini-3.5-flash
+          JOBS: ${{ github.event.schedule == '5 */3 * * *' && 'cuaca' || github.event.inputs.jobs || 'peringatan,gempa' }}
+        run: python backend/scripts/run.py --jobs "$JOBS"
