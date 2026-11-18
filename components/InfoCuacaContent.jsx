@@ -2,8 +2,6 @@
 
 import Link from 'next/link';
 import { Loader2 } from 'lucide-react';
-import { WilayahProvider } from '@/context/info/WilayahProvider';
-import { BmkgProvider } from '@/context/info/BmkgProvider';
 import { useWilayah } from '@/lib/hooks/info/useWilayah';
 import { useBmkg } from '@/lib/hooks/info/useBmkg';
 import { useUrutanKartu } from '@/lib/hooks/info/useBmkgCards';
@@ -36,7 +34,7 @@ function Pesan({ children }) {
   );
 }
 
-function Isi() {
+export default function InfoCuacaContent() {
   const { status: statusWilayah, wilayah } = useWilayah();
   const { status: statusData } = useBmkg();
   const urutan = useUrutanKartu();
@@ -86,15 +84,5 @@ function Isi() {
         </div>
       </main>
     </div>
-  );
-}
-
-export default function InfoCuacaContent() {
-  return (
-    <WilayahProvider>
-      <BmkgProvider>
-        <Isi />
-      </BmkgProvider>
-    </WilayahProvider>
   );
 }
