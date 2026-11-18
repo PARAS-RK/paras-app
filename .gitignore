@@ -46,5 +46,5 @@ next-env.d.ts
 
 #database
 __pycache__/
-backend\data\chroma
+backend/data/chroma/
 
