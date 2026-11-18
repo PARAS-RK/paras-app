@@ -15,7 +15,11 @@ def fetch_community_reports_from_supabase():
     untuk diolah atau dijadikan konteks tambahan oleh AI.
     """
     try:
+<<<<<<< HEAD
         response = supabase.table("reports").select("*").execute()
+=======
+        response = supabase.table("community_actions").select("*").execute()
+>>>>>>> 8699b996622f93c1792104e66a1334d1b8416ec3
         return response.data
     except Exception as e:
         print(f"Gagal mengambil data dari Supabase: {e}")
