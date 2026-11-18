@@ -131,14 +131,22 @@ console.log('SCOPED REPORTS:', scopedReports);
 }
 
 async function acceptReport(report) {
-    const result = await reviewDashboardReport(report.id);
+    const route = report.handledBy === 'bpbd'
+        ? 'emergency'
+        : 'community';
+
+    const result = await rerouteReport(report.id, route);
 
     if (!result.success) {
         setRoutingNotice(result.message || 'Gagal menerima laporan.');
         return;
     }
 
-    setRoutingNotice('Laporan berhasil diterima.');
+    setRoutingNotice(
+        route === 'emergency'
+            ? 'Laporan diterima melalui Jalur A.'
+            : 'Laporan diterima melalui Jalur B.'
+    );
 }
 
 function rejectDashboardReport(report) {

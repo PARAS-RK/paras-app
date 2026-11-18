@@ -17,18 +17,6 @@ export const archivedSeed = [
 ];
 
 export function buildSavings(reports) {
-    console.table(
-        reports.map((report) => ({
-            id: report.id,
-            handledBy: report.handledBy,
-            dashboardDecision: report.dashboardDecision,
-            dashboardRoute: report.dashboardRoute,
-            overrideFrom: report.overrideFrom,
-            urgency: report.urgency,
-            status: report.status,
-        }))
-    );
-    // Lanjutkan kode yang sudah ada
     const grouped = new Map();
 
     reports
@@ -40,8 +28,7 @@ export function buildSavings(reports) {
         )
         .forEach((report) => {
             const category = (report.aiCategory || 'Kategori lainnya')
-                .split('/')[0]
-                .trim();
+                .split('/')[0].trim();
 
             const isEmergencyOverride =
                 report.dashboardDecision === 'overridden' &&
@@ -50,21 +37,38 @@ export function buildSavings(reports) {
 
             const key = isEmergencyOverride
                 ? `override-${report.id}`
-                : `${areaLabel}|${category}`;
+                : `${report.regionId || report.regionLabel}|${category}`;
 
             const current = grouped.get(key) ?? {
                 key,
-                area: areaLabel,
+                area: report.regionLabel || report.area || 'Wilayah tidak diketahui',
+                regionId: report.regionId,
                 category,
                 reports: [],
+                userScores: new Map(),
                 points: 0,
                 target: 10,
+                isEmergencyOverride,
             };
 
             current.reports.push(report);
+
+            if (report.userId) {
+                const score = Number(report.urgency) || 0;
+                const previousScore = current.userScores.get(report.userId) || 0;
+
+                current.userScores.set(
+                    report.userId,
+                    Math.max(previousScore, score)
+                );
+            }
+
             current.points = Math.min(
                 current.target,
-                current.points + (Number(report.urgency) || 0)
+                [...current.userScores.values()].reduce(
+                    (total, score) => total + score,
+                    0
+                )
             );
 
             grouped.set(key, current);
@@ -857,7 +861,7 @@ const clusters = useMemo(() => {
     return allClusters.filter((cluster) => {
         const uniqueReporters = new Set(
             cluster.reports
-                .map((report) => report.reporter?.trim().toLowerCase())
+                .map((report) => report.userId)
                 .filter(Boolean)
         ).size;
 
@@ -872,7 +876,7 @@ const clusters = useMemo(() => {
         );
 
         const ready =
-            isEmergencyOverride ||
+            cluster.isEmergencyOverride ||
             (hasEnoughPoints && hasEnoughReporters);
 
         return !ready;
