@@ -6,7 +6,7 @@ from ..ai.ringkas import ringkas
 from ..cadangan import cadangan_cuaca
 from ..client import unduh_json
 from ..config import URL_CUACA
-from ..format import adm4_titik, pesan_tidak_pasti
+from ..format import pesan_tidak_pasti
 from ..waktu import (JAM_RINGKAS_CUACA, JEDA_BMKG_DETIK, JENDELA_CUACA_DEPAN_JAM,
                      JENDELA_CUACA_LALU_JAM, WIB)
 
@@ -46,7 +46,8 @@ def jalankan(area):
 
     for kode, r in area.items():
         try:
-            js = unduh_json(URL_CUACA, {"adm4": adm4_titik(kode)})
+            # kode sudah berformat 31.71.03.1001, langsung dipakai sebagai adm4
+            js = unduh_json(URL_CUACA, {"adm4": kode})
         except Exception as e:
             print(f"  {kode} gagal: {e}")  # baris lama dibiarkan, expired_at yang menentukan
             continue

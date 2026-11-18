@@ -1,7 +1,5 @@
 import { buatHandlerBmkg } from '@/lib/server/bmkgRoute';
 
-export const dynamic = 'force-dynamic';
-
 /**
  * GET /api/bmkg/gempaRasa
  * Gempa yang dirasakan di wilayah user (24 jam terakhir) + ringkasan.

@@ -1,7 +1,5 @@
 import { buatHandlerBmkg } from '@/lib/server/bmkgRoute';
 
-export const dynamic = 'force-dynamic';
-
 /**
  * GET /api/bmkg/peringatan
  * Peringatan dini cuaca + ringkasan untuk wilayah user.

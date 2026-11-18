@@ -1,7 +1,5 @@
 import { buatHandlerBmkg } from '@/lib/server/bmkgRoute';
 
-export const dynamic = 'force-dynamic';
-
 /**
  * GET /api/bmkg/cuaca
  * Prakiraan cuaca + ringkasan untuk kelurahan user yang login.

@@ -1,11 +1,6 @@
 import re
 
 
-def adm4_titik(kode):
-    """3174041006 -> 31.74.04.1006 (format yang diminta API BMKG)."""
-    return f"{kode[:2]}.{kode[2:4]}.{kode[4:6]}.{kode[6:]}"
-
-
 def bersih(nama):
     """'KOTA ADM. JAKARTA SELATAN' -> 'jakarta selatan'."""
     n = (nama or "").lower()

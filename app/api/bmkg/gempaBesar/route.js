@@ -1,7 +1,5 @@
 import { buatHandlerBmkg } from '@/lib/server/bmkgRoute';
 
-export const dynamic = 'force-dynamic';
-
 /**
  * GET /api/bmkg/gempaBesar
  * Gempa M5.0+ di Indonesia (7 hari terakhir) + ringkasan.
