@@ -7,6 +7,7 @@ import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { Bell } from 'lucide-react';
 import { cn } from '../lib/utils';
+import logo from '../public/logo.svg';
 
 const links = [
   { href: '/home', label: 'Beranda' },
@@ -23,7 +24,7 @@ function NavbarContent() {
     <header className="sticky top-0 z-50 w-full border-b border-gray-100 bg-white shadow-sm">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3">
         <Link href="/home" className="flex items-center">
-          <Image src="/logo.svg" alt="Logo PARAS" width={60} height={24} className="object-contain" />
+          <Image src={logo} alt="Logo PARAS" width={60} height={24} className="object-contain" />
           <p className="ml-2 text-xl font-bold text-gray-800">Paras</p>
         </Link>
         <div className="flex items-center gap-2 lg:gap-6">

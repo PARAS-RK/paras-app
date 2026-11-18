@@ -66,9 +66,11 @@ export default function AdminDashboard({ userCounts }) {
         report.area.replace(/^Kel\.\s*/, '').trim() ===
         areaLabel.replace(/^Kel\.\s*/, '').trim()
   );
+  
   console.log('AREA LABEL:', areaLabel);
   console.log('REPORT AREA:', reports.map(r => r.area));
   console.log('SCOPED REPORTS:', scopedReports);
+  
   const activeReports = scopedReports.filter(
     (report) => report.status === "pending" || report.status === "in_progress"
   );
@@ -123,14 +125,22 @@ export default function AdminDashboard({ userCounts }) {
 }
 
 async function acceptReport(report) {
-    const result = await reviewDashboardReport(report.id);
+    const route = report.handledBy === 'bpbd'
+        ? 'emergency'
+        : 'community';
+
+    const result = await rerouteReport(report.id, route);
 
     if (!result.success) {
         setRoutingNotice(result.message || 'Gagal menerima laporan.');
         return;
     }
 
-    setRoutingNotice('Laporan berhasil diterima.');
+    setRoutingNotice(
+        route === 'emergency'
+            ? 'Laporan diterima melalui Jalur A.'
+            : 'Laporan diterima melalui Jalur B.'
+    );
 }
 
 function rejectDashboardReport(report) {

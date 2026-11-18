@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { AlertTriangle, Archive, Bot, CalendarDays, Camera, Check, CheckCircle2, ChevronDown, ChevronUp, CircleDot, ClipboardCheck, Clock3, Copy, Download, FileText, Phone, LoaderCircle, MapPin, Pencil, Send, ShieldCheck, Siren, Sparkles, Upload, Users, XCircle, X, } from 'lucide-react';
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { cn } from '@/lib/utils';
 import { useReportContext } from '@/context/ReportContext';
 import { publishCommunityAksi, useAksiState } from '@/lib/aksiStore';
-import { areaFull, areaLabel } from '@/lib/currentUser';
+import { useAdmin } from '@/context/AdminContext';
 const statusConfig = {
     pending: { label: 'Pending Review', className: 'bg-amber-100 text-amber-800', icon: Clock3 },
     in_progress: { label: 'Diproses', className: 'bg-blue-100 text-blue-800', icon: LoaderCircle },
@@ -29,17 +29,10 @@ const queueTabs = [
     },
 ];
 
-const exactLocations = {
-    'LP-2024-089': `Depan RT 04 / RW 05, ${areaLabel}`,
-    'LP-2024-088': `Permukiman RT 04 / RW 05, ${areaLabel}`,
-    'LP-2024-087': `Area usaha RW 05, ${areaLabel}`,
-    'LP-2024-086': `Jl. Melati RW 03, ${areaLabel}`,
-    'LP-2024-085': `Lahan kosong RT 05 / RW 05, ${areaLabel}`,
-    'LP-2024-082': `RT 02 / RT 04 / RT 05, ${areaLabel}`,
-};
-function incidentLocation(report) {
-    return exactLocations[report.id] || report.location || areaLabel;
+function incidentLocation(report, areaLabel) {
+    return report.locationDetail || report.regionLabel || 'Lokasi beum tersedia';
 }
+
 function urgencyLevel(report) {
     if (report.urgency >= 7)
         return { label: 'Tinggi/Darurat', className: 'bg-red-100 text-red-700', icon: Siren };
@@ -47,11 +40,12 @@ function urgencyLevel(report) {
         return { label: 'Sedang', className: 'bg-orange-100 text-slate-900', icon: AlertTriangle };
     return { label: 'Rendah', className: 'bg-slate-100 text-slate-700', icon: CircleDot };
 }
-function bpbdTemplate(report) {
-    return `Yth. BPBD Jakarta Selatan, mohon bantuan penanganan segera untuk wilayah ${areaLabel}.
+function bpbdTemplate(report, areaLabel, areaFull) {
+    return `Yth. BPBD,
 
 Kejadian: ${report.title}
-TKP: ${incidentLocation(report)}
+Pelapor: ${report.reporter || 'Tidak diketahui'}
+TKP: ${incidentLocation(report, areaLabel)}
 Wilayah administratif: ${areaFull}
 Waktu laporan: ${report.date}
 Tingkat urgensi: ${urgencyLevel(report).label}
@@ -60,6 +54,7 @@ Situasi: ${report.details}
 
 Mohon konfirmasi tindak lanjut. Terima kasih.`;
 }
+
 function downloadEvidenceImage(report) {
     const safeTitle = report.title.replace(/[<>&]/g, '');
     const safeLocation = incidentLocation(report).replace(/[<>&]/g, '');
@@ -202,11 +197,24 @@ function RejectionDialog({ open, title, onClose, onConfirm }) {
     </div>);
 }
 function StatusPill({ status }) {
-    const config = statusConfig[status];
+    const normalizedStatus = {
+        submitted: 'pending',
+        in_review: 'in_progress',
+        resolved: 'handled',
+    }[status] || status;
+
+    const config = statusConfig[normalizedStatus] || statusConfig.pending;
     const Icon = config.icon;
-    return (<span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold', config.className)}>
-      <Icon className="h-3.5 w-3.5" aria-hidden/> {config.label}
-    </span>);
+
+    return (
+        <span className={cn(
+            'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold',
+            config.className
+        )}>
+            <Icon className="h-3.5 w-3.5" aria-hidden />
+            {config.label}
+        </span>
+    );
 }
 function MetricCard({ label, value, icon: Icon, tone }) {
     return (<div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -248,12 +256,48 @@ function ReportSummary({ report, open, onToggle }) {
     </>);
 }
 function EmergencyCard({ report, onApprove, onFinish, onSaveDraft }) {
+    const admin = useAdmin();
     const [message, setMessage] = useState(
-        report.emergencyDraft ?? bpbdTemplate(report)
+        report.emergencyDraft ?? bpbdTemplate(report, admin.areaLabel, admin.areaFull)
     );
     const [hotline, setHotline] = useState(
-        report.emergencyHotline ?? '112 — Jakarta Siaga'
+        report.emergencyHotline ?? ''
     );
+
+    useEffect(() => {
+    let cancelled = false;
+
+    async function loadContact() {
+        try {
+            const response = await fetch(
+                '/api/admin/emergency-contacts?agency_type=bpbd'
+            );
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Gagal mengambil kontak BPBD');
+            }
+
+            if (!cancelled) {
+                setHotline(result.contact?.phone_number ?? '');
+            }
+        } catch (error) {
+            console.error('Gagal memuat kontak BPBD:', error);
+
+            if (!cancelled) {
+                setHotline('');
+            }
+        }
+    }
+
+    loadContact();
+
+    return () => {
+        cancelled = true;
+    };
+}, [report.id]);
+
     const [copied, setCopied] = useState(false);
     const [proofFile, setProofFile] = useState(null);
     const [completionNotes, setCompletionNotes] = useState('');
@@ -264,14 +308,20 @@ function EmergencyCard({ report, onApprove, onFinish, onSaveDraft }) {
     const [draftSaved, setDraftSaved] = useState(false);
 
     const hasDraftChanges =
-        message !== (report.emergencyDraft ?? bpbdTemplate(report)) ||
-        hotline !== (report.emergencyHotline ?? '112 — Jakarta Siaga');
+        message !== (report.emergencyDraft ?? bpbdTemplate(report, admin.areaLabel, admin.areaFull)) ||
+        hotline !== (report.emergencyHotline ?? '');
 
-    function saveDraft() {
-        onSaveDraft(message, hotline);
-        setEditingDraft(false);
-        setDraftSaved(true);
+    async function saveDraft() {
+    const saved = await onSaveDraft(message, hotline);
+
+    if (!saved) {
+        setDraftSaved(false);
+        return;
     }
+
+    setEditingDraft(false);
+    setDraftSaved(true);
+}
 
     async function copyMessage() {
         await navigator.clipboard.writeText(`Hotline: ${hotline}\n\n${message}`);
@@ -313,7 +363,7 @@ function EmergencyCard({ report, onApprove, onFinish, onSaveDraft }) {
               </div>
               <div>
                 <dt className="text-xs font-bold text-slate-400">Wilayah sesi</dt>
-                <dd className="mt-1 text-xs font-black text-slate-800">{areaLabel}</dd>
+                <dd className="mt-1 text-xs font-black text-slate-800">{admin.areaLabel}</dd>
               </div>
               <div>
                 <dt className="text-xs font-bold text-slate-400">Waktu laporan</dt>
@@ -561,7 +611,7 @@ function categoryCluster(report) {
 function clusterKey(report) {
     return `${regionalCluster(report).toLowerCase()}|${categoryCluster(report).toLowerCase()}`;
 }
-function CommunityCard({ reports, onApprove, onReject, overridden, recordTimelineActivity, startCommunityHandling }) {
+function CommunityCard({ reports, overridden, recordTimelineActivity, startCommunityHandling }) {
     const report = reports[0];
     const aksiState = useAksiState();
     const sourceId = reports.map((item) => item.id).join('-');
@@ -678,8 +728,6 @@ function CommunityCard({ reports, onApprove, onReject, overridden, recordTimelin
         setPublishedId('simulation');
         return;
     }
-
-    onApprove();
 
     const id = publishCommunityAksi({  
         sourceId,
@@ -950,13 +998,13 @@ setPublishedId(id);
 }
 
 export default function AIAssistant() {
+    const { areaLabel, areaFull } = useAdmin();
     const {
     reports,
     approveReport,
     saveEmergencyDraft,
     finalizeReport,
     acceptRecommendation,
-    rejectRecommendation,
     recordTimelineActivity,
     startCommunityHandling,
 } = useReportContext();
@@ -1091,12 +1139,6 @@ const readyClusters = maturedClusters;
             <CommunityCard
                 key={cluster[0].id}
                 reports={cluster}
-                onApprove={() =>
-                    cluster.forEach((item) => acceptRecommendation(item.id))
-                }
-                onReject={(reason) =>
-                    cluster.forEach((item) => rejectRecommendation(item.id, reason))
-                }
                 recordTimelineActivity={recordTimelineActivity}
                 startCommunityHandling={startCommunityHandling}
             />

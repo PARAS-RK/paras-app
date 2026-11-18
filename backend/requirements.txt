@@ -10,3 +10,4 @@ chromadb
 google-genai
 requests
 supabase
+

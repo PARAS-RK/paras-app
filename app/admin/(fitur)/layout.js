@@ -9,6 +9,12 @@ import AdminNotifications from "@/components/admin/AdminNotifications";
 export default async function AdminPanelLayout({ children }) {
   await connection();
   const admin = await getAdminSession();
+  console.log("ADMIN SESSION:", {
+  name: admin?.name,
+  userId: admin?.userId,
+  unitId: admin?.unitId,
+  regionID: admin?.regionID,
+});
   if (!admin) redirect("/admin/login");
 
   return (
