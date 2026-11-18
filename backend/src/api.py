@@ -1,15 +1,17 @@
+import os
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-<<<<<<< HEAD
+
 from recommendation.community_recommender import get_dynamic_recommendations, format_recommendations
 from recommendation.generation import generate_answer
 from recommendation.retrieval import retrieve_context
-=======
-from rag.community_recommender import recommend_community_actions
-from rag.generation import generate_answer
-from rag.retrieval import retrieve_context
->>>>>>> 8699b996622f93c1792104e66a1334d1b8416ec3
+
 
 app = FastAPI(title="PARAS RAG & Aksi Komunitas API")
 
@@ -63,19 +65,12 @@ def recommendations_community(payload: CommunityRecommendationRequest):
     if not report:
         raise HTTPException(status_code=400, detail="Laporan tidak boleh kosong")
     try:
-<<<<<<< HEAD
+
         results = get_dynamic_recommendations(
             user_report=report,
             top_k=max(1, min(payload.top_k, 5)),
         )
         return {"results": results, "text": format_recommendations(results)}
-=======
-        return recommend_community_actions(
-            report_text=report,
-            top_k=max(1, min(payload.top_k, 5)),
-            region_id=payload.region_id,
-            include_sop=True,
-        )
->>>>>>> 8699b996622f93c1792104e66a1334d1b8416ec3
+
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))

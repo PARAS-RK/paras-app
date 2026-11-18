@@ -7,7 +7,7 @@ import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { Bell } from 'lucide-react';
 import { cn } from '../lib/utils';
-import logo from '../../public/logo.svg';
+import logo from '../public/logo.svg';
 
 const links = [
   { href: '/home', label: 'Beranda' },
