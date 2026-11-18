@@ -11,15 +11,12 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def fetch_community_reports_from_supabase():
     """
-    Mengambil data laporan atau riwayat aksi dari Supabase
+    Mengambil data laporan warga dari tabel 'reports' di Supabase
     untuk diolah atau dijadikan konteks tambahan oleh AI.
     """
     try:
-<<<<<<< HEAD
-        response = supabase.table("reports").select("*").execute()
-=======
-        response = supabase.table("community_actions").select("*").execute()
->>>>>>> 8699b996622f93c1792104e66a1334d1b8416ec3
+        # Mengambil data dari tabel 'reports' sesuai skema database PARAS
+        response = supabase.table("reports").select("report_id, report_description, report_category, report_status, region_id").execute()
         return response.data
     except Exception as e:
         print(f"Gagal mengambil data dari Supabase: {e}")
