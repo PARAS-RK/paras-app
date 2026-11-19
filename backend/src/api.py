@@ -1,25 +1,52 @@
 import os
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+
+for env_key in (
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "OMP_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+):
+    os.environ.setdefault(env_key, "1")
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from recommendation.community_recommender import get_dynamic_recommendations, format_recommendations
-from recommendation.generation import generate_answer
-from recommendation.retrieval import retrieve_context
+try:
+    from recommendation.community_recommender import (
+        format_recommendations,
+        get_dynamic_recommendations,
+    )
+    from recommendation.generation import generate_answer
+    from recommendation.retrieval import retrieve_context
+except ModuleNotFoundError:
+    from src.recommendation.community_recommender import (
+        format_recommendations,
+        get_dynamic_recommendations,
+    )
+    from src.recommendation.generation import generate_answer
+    from src.recommendation.retrieval import retrieve_context
+
+DEFAULT_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000"]
+
+
+def get_allowed_origins() -> list[str]:
+    raw_origins = os.getenv("ALLOWED_ORIGINS", "")
+    origins = [
+        origin.strip().rstrip("/")
+        for origin in raw_origins.split(",")
+        if origin.strip()
+    ]
+    return origins or DEFAULT_ORIGINS
 
 
 app = FastAPI(title="PARAS RAG & Aksi Komunitas API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=get_allowed_origins(),
     allow_credentials=False,
-    allow_methods=["POST", "GET"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -34,6 +61,11 @@ class CommunityRecommendationRequest(BaseModel):
     top_k: int = 2
 
 
+@app.get("/")
+def root():
+    return {"service": "PARAS RAG & Aksi Komunitas API", "status": "running"}
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -44,6 +76,7 @@ def chat(payload: ChatRequest):
     question = payload.message.strip()
     if not question:
         raise HTTPException(status_code=400, detail="Pertanyaan tidak boleh kosong")
+
     try:
         contexts = retrieve_context(question)
         answer = generate_answer(question, contexts)
@@ -55,8 +88,10 @@ def chat(payload: ChatRequest):
             for item in contexts
         ]
         return {"answer": answer, "sources": sources}
+    except HTTPException:
+        raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=f"Gagal memproses chat: {exc}") from exc
 
 
 @app.post("/recommendations/community")
@@ -64,13 +99,14 @@ def recommendations_community(payload: CommunityRecommendationRequest):
     report = payload.report.strip()
     if not report:
         raise HTTPException(status_code=400, detail="Laporan tidak boleh kosong")
-    try:
 
+    try:
         results = get_dynamic_recommendations(
             user_report=report,
             top_k=max(1, min(payload.top_k, 5)),
         )
         return {"results": results, "text": format_recommendations(results)}
-
+    except HTTPException:
+        raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=f"Gagal membuat rekomendasi: {exc}") from exc

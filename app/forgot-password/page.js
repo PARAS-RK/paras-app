@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Mail, ArrowLeft, CheckCircle2, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import logo from '@/public/logo_paras_1.png';
+import logo from '../../public/logo.svg';
 import { requestPasswordReset } from './action';
 
 export default function ForgotPassword() {

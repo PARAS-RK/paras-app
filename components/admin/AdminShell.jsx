@@ -22,6 +22,15 @@ function isActive(item, pathname) {
   return item.exact ? pathname === item.path : pathname.startsWith(item.path);
 }
 
+function AdminAvatar({ className = '' }) {
+  const admin = useAdmin();
+  return (
+    <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-black text-white', className)}>
+      {admin.initials}
+    </div>
+  );
+}
+
 function Sidebar({ mobile = false, pathname, onNavigate, onClose }) {
   const admin = useAdmin();
 
