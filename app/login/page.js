@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Mail, Lock, Phone, Loader2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { createClient } from '../../lib/supabase/client';
-import logo from '../../public/logo_paras_1.png';
+import logo from '@/public/logo.svg';
 
 export default function Login() {
   const router = useRouter();
@@ -24,7 +24,7 @@ export default function Login() {
       setGoogleLoading(true);
       setAuthError('');
       const supabase = createClient();
-      
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -59,7 +59,7 @@ export default function Login() {
 
     try {
       const supabase = createClient();
-      
+
       // Proses login menggunakan Email / Password Supabase Auth
       const { error } = await supabase.auth.signInWithPassword({
         email: form.identifier,
@@ -88,11 +88,7 @@ export default function Login() {
         </div>
 
         <div className="flex-1 px-6 pb-10 bg-white">
-          {authError && (
-            <div className="mb-4 rounded-xl bg-red-50 p-3 text-xs text-red-500 text-center font-semibold">
-              {authError}
-            </div>
-          )}
+          {authError && <div className="mb-4 rounded-xl bg-red-50 p-3 text-xs text-red-500 text-center font-semibold">{authError}</div>}
 
           {/* Tombol Google OAuth */}
           <button
