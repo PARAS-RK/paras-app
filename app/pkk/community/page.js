@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Mail, Phone, User, ChevronDown, ArrowRight, CheckCircle2, Clock, Users, MapPin, Lock, Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import logo from '@/public/paras_logo_lama.svg';
+import logo from '@/public/logo.svg';
 import { registerCommunity } from './actions';
 
 const WILAYAH_API = 'https://www.emsifa.com/api-wilayah-indonesia/api';

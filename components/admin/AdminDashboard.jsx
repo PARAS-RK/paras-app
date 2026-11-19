@@ -51,7 +51,7 @@ function MetricCard({ label, value, icon: Icon, tone, emergency }) {
   );
 }
 
-export default function AdminDashboard() {
+export default function AdminDashboard({ userCounts }) {
   const [rejectingReport, setRejectingReport] = useState(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const { areaLabel, areaFull } = useAdmin();
@@ -61,25 +61,35 @@ export default function AdminDashboard() {
   const [reportTab, setReportTab] = useState("all");
   const [expandedReportId, setExpandedReportId] = useState(null);
   const [routingNotice, setRoutingNotice] = useState("");
-  const scopedUsers = USERS.filter((user) => user.area === areaLabel);
-  const scopedReports = reports.filter((report) => report.area === areaLabel);
+  const scopedReports = reports.filter(
+    (report) =>
+        report.area.replace(/^Kel\.\s*/, '').trim() ===
+        areaLabel.replace(/^Kel\.\s*/, '').trim()
+  );
+  
+  console.log('AREA LABEL:', areaLabel);
+  console.log('REPORT AREA:', reports.map(r => r.area));
+  console.log('SCOPED REPORTS:', scopedReports);
+  
   const activeReports = scopedReports.filter(
     (report) => report.status === "pending" || report.status === "in_progress"
   );
   const emergencyReports = scopedReports.filter((report) => report.handledBy === 'bpbd' && (report.status === 'pending' || report.status === 'in_progress'));
   const completedActions = aksi.aksi.filter((item) => item.location === areaLabel && item.status === "selesai").length;
-  const activePkkMembers = scopedUsers.filter(
-    (user) => user.status === "active" && (user.type === "pkk_member" || user.type === "pkk_chair")
-  ).length;
-  const activeCitizens = scopedUsers.filter(
-    (user) => user.status === "active" && user.type === "general"
-  ).length;
-
   const dashboardReports = scopedReports.map((report) => ({
     ...report,
     area: areaLabel,
     location: reportLocations[report.id] || areaLabel,
   }));
+
+  console.log(
+  'DASHBOARD DECISION:',
+  dashboardReports.map(report => ({
+    id: report.databaseId,
+    decision: report.dashboardDecision,
+    route: report.dashboardRoute,
+  }))
+);
 
   const filteredReports = dashboardReports
     .filter((report) => ! report.dashboardDecision)
@@ -89,6 +99,9 @@ export default function AdminDashboard() {
             ? report.handledBy === 'bpbd'
             : report.handledBy === 'community')
     );
+    console.log('DASHBOARD REPORTS:', dashboardReports);
+    console.log('REPORT TAB:', reportTab);
+    console.log('FILTERED REPORTS:', filteredReports);
 
   function routeWithFeedback(message) {
     setRoutingNotice(message);
@@ -112,14 +125,22 @@ export default function AdminDashboard() {
 }
 
 async function acceptReport(report) {
-    const result = await reviewDashboardReport(report.id);
+    const route = report.handledBy === 'bpbd'
+        ? 'emergency'
+        : 'community';
+
+    const result = await rerouteReport(report.id, route);
 
     if (!result.success) {
         setRoutingNotice(result.message || 'Gagal menerima laporan.');
         return;
     }
 
-    setRoutingNotice('Laporan berhasil diterima.');
+    setRoutingNotice(
+        route === 'emergency'
+            ? 'Laporan diterima melalui Jalur A.'
+            : 'Laporan diterima melalui Jalur B.'
+    );
 }
 
 function rejectDashboardReport(report) {
@@ -167,8 +188,11 @@ async function overrideReport(report) {
       </header>
 
       <section className="grid grid-cols-2 gap-4 lg:grid-cols-4" aria-label="Ringkasan metrik">
-        <MetricCard label="Anggota PKK Aktif" value={activePkkMembers} icon={Users} tone="bg-brand-xlight text-brand" />
-        <MetricCard label="Warga Aktif" value={activeCitizens} icon={UserRound} tone="bg-blue-50 text-blue-600" />
+        <Link href="/admin/manajemen-pengguna" aria-label="Buka Manajemen Pengguna">
+          <MetricCard label="Anggota PKK Aktif" value={userCounts.pkk} icon={Users} tone="bg-brand-xlight text-brand" />
+          <MetricCard label="Warga Aktif" value={userCounts.citizens} icon={UserRound} tone="bg-blue-50 text-blue-600" />
+        </Link>
+
         <MetricCard label="Laporan Darurat / Aktif" value={emergencyReports.length} icon={ShieldAlert} tone="bg-red-50 text-red-600" emergency />
         <MetricCard label="Aksi Selesai" value={completedActions} icon={CheckCircle2} tone="bg-brand-xlight text-brand" />
       </section>
@@ -235,6 +259,9 @@ async function overrideReport(report) {
                         <span className="flex items-center gap-1">
                           <Clock className="h-3 w-3 shrink-0 text-slate-400" /> {report.date}
                         </span>
+                        <span>
+                          <p className="flex items-center gap-1"> Detail Lokasi: {report.locationDetail || "Detail lokasi belum diisi"}</p>
+                        </span>
                       </div>
                       <button
                         type="button"
@@ -300,14 +327,42 @@ report.dashboardDecision === 'overridden' ? (
                         <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-600">{report.details}</p>
                       </div>
                       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                        <div className="flex min-h-24 items-center justify-center bg-slate-100 text-slate-400">
-                          <Camera className="h-6 w-6" />
-                        </div>
-                        <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-3 py-2.5">
-                          <span className="truncate text-xs font-bold text-slate-600">bukti-{report.id}.jpg</span>
-                          <span className="shrink-0 text-xs font-black text-brand">Bukti warga</span>
-                        </div>
-                      </div>
+  {report.media?.length > 0 ? (
+    <div className="space-y-2">
+      {report.media.map((item, index) => (
+        <a
+          key={`${item.path}-${index}`}
+          href={item.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block"
+        >
+          <img
+            src={item.url}
+            alt={`Bukti laporan ${report.id}`}
+            className="max-h-64 w-full object-contain bg-slate-100"
+          />
+        </a>
+      ))}
+    </div>
+  ) : (
+    <div className="flex min-h-24 items-center justify-center gap-2 bg-slate-100 text-slate-400">
+      <Camera className="h-6 w-6" />
+      <span className="text-xs">Belum ada foto bukti</span>
+    </div>
+  )}
+
+  <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-3 py-2.5">
+    <span className="truncate text-xs font-bold text-slate-600">
+      {report.media?.length > 0
+        ? `${report.media.length} foto bukti`
+        : "Bukti laporan"}
+    </span>
+    <span className="shrink-0 text-xs font-black text-brand">
+      Bukti warga
+    </span>
+  </div>
+</div>
                     </div>
                   )}
                 </article>
