@@ -29,9 +29,16 @@ const reportLocations = {
   "LP-2024-082": "RT 02 / RT 04 / RT 05",
 };
 
-function MetricCard({ label, value, icon: Icon, tone, emergency }) {
+function MetricCard({ label, value, icon: Icon, tone, emergency, href }) {
+  const Card = href ? Link : "article";
+
   return (
-    <article className={cn("rounded-2xl border bg-white p-5 shadow-sm", emergency ? "border-red-200" : "border-slate-200"
+    <Card
+      href={href}
+      className={cn(
+        "block rounded-2xl border bg-white p-5 shadow-sm",
+        emergency ? "border-red-200" : "border-slate-200",
+        href && "transition-shadow hover:shadow-md"
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -47,7 +54,7 @@ function MetricCard({ label, value, icon: Icon, tone, emergency }) {
       </div>
       <p className="mt-5 text-3xl font-black text-slate-900">{value}</p>
       <p className="mt-1 text-xs font-bold text-slate-500">{label}</p>
-    </article>
+    </Card>
   );
 }
 
@@ -188,11 +195,8 @@ async function overrideReport(report) {
       </header>
 
       <section className="grid grid-cols-2 gap-4 lg:grid-cols-4" aria-label="Ringkasan metrik">
-        <Link href="/admin/manajemen-pengguna" aria-label="Buka Manajemen Pengguna">
-          <MetricCard label="Anggota PKK Aktif" value={userCounts.pkk} icon={Users} tone="bg-brand-xlight text-brand" />
-          <MetricCard label="Warga Aktif" value={userCounts.citizens} icon={UserRound} tone="bg-blue-50 text-blue-600" />
-        </Link>
-
+        <MetricCard label="Anggota PKK Aktif" value={userCounts.pkk} icon={Users} tone="bg-brand-xlight text-brand" href="/admin/manajemen-pengguna" />
+        <MetricCard label="Warga Aktif" value={userCounts.citizens} icon={UserRound} tone="bg-blue-50 text-blue-600" href="/admin/manajemen-pengguna" />
         <MetricCard label="Laporan Darurat / Aktif" value={emergencyReports.length} icon={ShieldAlert} tone="bg-red-50 text-red-600" emergency />
         <MetricCard label="Aksi Selesai" value={completedActions} icon={CheckCircle2} tone="bg-brand-xlight text-brand" />
       </section>

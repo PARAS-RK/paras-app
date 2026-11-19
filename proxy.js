@@ -8,7 +8,7 @@ const HOME_PATH = '/home';
 const MAINTENANCE_PATH = '/maintenance';
 
 const PROTECTED_PREFIXES = ['/home', '/aksi', '/info', '/lapor', '/pantau', '/profile', '/store', '/api/lapor', '/api/pantau', '/api/profile'];
-const LEADER_PREFIXES = ['/admin'];
+const LEADER_PREFIXES = ['/admin', '/api/admin'];
 const PUBLIC_EXCEPTIONS = ['/admin/login', '/pkk/community'];
 // ---------------------------------------------------------------------
 
@@ -144,7 +144,10 @@ export default async function proxy(request) {
   // 6. Halaman ketua PKK: harus leader aktif
   if (isLeaderRoute) {
     const { data: regionId } = await supabase.rpc('leader_region_id');
-    if (!regionId) return redirectTo(request, supabaseResponse, HOME_PATH);
+    if (!regionId) {
+      if (isApi) return jsonError(supabaseResponse, 403, 'Akses admin ditolak.');
+      return redirectTo(request, supabaseResponse, HOME_PATH);
+    }
   }
 
   return supabaseResponse;
