@@ -1,13 +1,43 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Mail, Phone, User, ArrowRight, CheckCircle2, Clock, Users, MapPin, Lock, Eye, EyeOff } from 'lucide-react';
+import { Mail, Phone, User, ChevronDown, ArrowRight, CheckCircle2, Clock, Users, MapPin, Lock, Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import logo from '@/public/logo.svg';
-import RegionPicker from '@/components/RegionPicker';
 import { registerCommunity } from './actions';
+
+const WILAYAH_API = 'https://www.emsifa.com/api-wilayah-indonesia/api';
+
+// Dropdown yang dipakai ulang untuk 4 level wilayah
+function AreaSelect({ id, label, value, onChange, options, placeholder, disabled, loading, error }) {
+  return (
+    <div>
+      <label htmlFor={id} className="block text-xs font-bold text-foreground mb-1.5">
+        {label} *
+      </label>
+      <div className="relative">
+        <select
+          id={id}
+          value={value}
+          disabled={disabled}
+          onChange={onChange}
+          className={cn('w-full px-3 py-3 rounded-xl border text-sm outline-none appearance-none disabled:cursor-not-allowed disabled:opacity-50', error ? 'border-red-300 bg-red-50' : 'border-border bg-muted focus:border-pink')}
+        >
+          <option value="">{loading ? 'Memuat data...' : placeholder}</option>
+          {options.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name}
+            </option>
+          ))}
+        </select>
+        <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+      </div>
+      {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
+    </div>
+  );
+}
 
 export default function CommunityRegisterPage() {
   const [step, setStep] = useState('form');
@@ -35,15 +65,104 @@ export default function CommunityRegisterPage() {
 
   const [errors, setErrors] = useState({});
 
+  // Data dropdown dari API wilayah
+  const [provinces, setProvinces] = useState([]);
+  const [cities, setCities] = useState([]);
+  const [districts, setDistricts] = useState([]);
+  const [subdistricts, setSubdistricts] = useState([]);
+
+  // Level yang sedang dimuat: 'province' | 'city' | 'district' | 'subdistrict' | ''
+  const [areaLoading, setAreaLoading] = useState('');
+  const [areaError, setAreaError] = useState('');
+
+  async function loadArea(path, setter, level) {
+    setAreaLoading(level);
+    setAreaError('');
+    try {
+      const res = await fetch(`${WILAYAH_API}/${path}.json`);
+      if (!res.ok) throw new Error('Gagal memuat data wilayah');
+      setter(await res.json());
+    } catch (err) {
+      console.error('Error fetching wilayah:', err);
+      setAreaError('Data wilayah gagal dimuat. Periksa koneksi lalu coba lagi.');
+    } finally {
+      setAreaLoading('');
+    }
+  }
+
+  // 1. Fetch provinsi saat halaman dimuat
+  useEffect(() => {
+    loadArea('provinces', setProvinces, 'province');
+  }, []);
+
+  // 2. Provinsi dipilih -> fetch kota/kabupaten
+  function handleProvinceChange(e) {
+    const id = e.target.value;
+    const obj = provinces.find((p) => p.id === id);
+    setForm((f) => ({
+      ...f,
+      provinceCode: id,
+      provinceName: obj?.name || '',
+      cityCode: '',
+      cityName: '',
+      districtCode: '',
+      districtName: '',
+      subdistrictCode: '',
+      subdistrictName: '',
+    }));
+    setErrors((er) => ({ ...er, province: undefined }));
+    setCities([]);
+    setDistricts([]);
+    setSubdistricts([]);
+    if (id) loadArea(`regencies/${id}`, setCities, 'city');
+  }
+
+  // 3. Kota dipilih -> fetch kecamatan
+  function handleCityChange(e) {
+    const id = e.target.value;
+    const obj = cities.find((c) => c.id === id);
+    setForm((f) => ({
+      ...f,
+      cityCode: id,
+      cityName: obj?.name || '',
+      districtCode: '',
+      districtName: '',
+      subdistrictCode: '',
+      subdistrictName: '',
+    }));
+    setErrors((er) => ({ ...er, city: undefined }));
+    setDistricts([]);
+    setSubdistricts([]);
+    if (id) loadArea(`districts/${id}`, setDistricts, 'district');
+  }
+
+  // 4. Kecamatan dipilih -> fetch kelurahan
+  function handleDistrictChange(e) {
+    const id = e.target.value;
+    const obj = districts.find((d) => d.id === id);
+    setForm((f) => ({
+      ...f,
+      districtCode: id,
+      districtName: obj?.name || '',
+      subdistrictCode: '',
+      subdistrictName: '',
+    }));
+    setErrors((er) => ({ ...er, district: undefined }));
+    setSubdistricts([]);
+    if (id) loadArea(`villages/${id}`, setSubdistricts, 'subdistrict');
+  }
+
+  // 5. Kelurahan dipilih
+  function handleSubdistrictChange(e) {
+    const id = e.target.value;
+    const obj = subdistricts.find((s) => s.id === id);
+    setForm((f) => ({ ...f, subdistrictCode: id, subdistrictName: obj?.name || '' }));
+    setErrors((er) => ({ ...er, subdistrict: undefined }));
+  }
+
   function setField(name, value) {
     setForm((f) => ({ ...f, [name]: value }));
     setErrors((er) => ({ ...er, [name]: undefined }));
-  }
-
-  // Dipanggil RegionPicker setiap pilihan wilayah berubah
-  function handleRegionChange(patch) {
-    setForm((f) => ({ ...f, ...patch }));
-    setErrors((er) => ({ ...er, province: undefined, city: undefined, district: undefined, subdistrict: undefined }));
   }
 
   function validate() {
@@ -228,7 +347,55 @@ export default function CommunityRegisterPage() {
                 <p className="text-xs font-black text-foreground uppercase tracking-wider">Wilayah PKK</p>
               </div>
 
-              <RegionPicker value={form} errors={errors} onChange={handleRegionChange} />
+              <AreaSelect
+                id="pkk-province"
+                label="Provinsi"
+                value={form.provinceCode}
+                onChange={handleProvinceChange}
+                options={provinces}
+                placeholder="Pilih provinsi"
+                disabled={areaLoading === 'province'}
+                loading={areaLoading === 'province'}
+                error={errors.province}
+              />
+
+              <AreaSelect
+                id="pkk-city"
+                label="Kota/Kabupaten"
+                value={form.cityCode}
+                onChange={handleCityChange}
+                options={cities}
+                placeholder="Pilih kota/kabupaten"
+                disabled={!form.provinceCode || areaLoading === 'city'}
+                loading={areaLoading === 'city'}
+                error={errors.city}
+              />
+
+              <AreaSelect
+                id="pkk-district"
+                label="Kecamatan"
+                value={form.districtCode}
+                onChange={handleDistrictChange}
+                options={districts}
+                placeholder="Pilih kecamatan"
+                disabled={!form.cityCode || areaLoading === 'district'}
+                loading={areaLoading === 'district'}
+                error={errors.district}
+              />
+
+              <AreaSelect
+                id="pkk-subdistrict"
+                label="Kelurahan"
+                value={form.subdistrictCode}
+                onChange={handleSubdistrictChange}
+                options={subdistricts}
+                placeholder="Pilih kelurahan"
+                disabled={!form.districtCode || areaLoading === 'subdistrict'}
+                loading={areaLoading === 'subdistrict'}
+                error={errors.subdistrict}
+              />
+
+              {areaError && <p className="text-xs text-red-500">{areaError}</p>}
             </div>
 
             {/* Kartu: Akses dashboard admin */}

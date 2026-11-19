@@ -5,16 +5,23 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Script from 'next/script';
-import { AlertTriangle, ArrowRight, CheckCircle2, Clock, Eye, EyeOff, LoaderCircle, Lock, Mail, MessageCircle, Phone, User, XCircle } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, Clock, Eye, EyeOff, LoaderCircle, Lock, Mail, MessageCircle, Phone, User, XCircle } from 'lucide-react';
 
 import { contactFor, formatRemaining } from '../../lib/memberStore';
 import { cn } from '../../lib/utils';
 import logo from '@/public/logo.svg';
 import { createClient } from '../../lib/supabase/client';
-import RegionPicker from '@/components/RegionPicker';
 
 const PKK_TABLE = 'pkk_units';
 const REGION_TABLE = 'regions';
+const REGION_COLUMNS = {
+  city: 'city',
+  kecamatan: 'district',
+  kelurahan: 'subdistrict',
+};
+
+const selectClass = (error) => cn('w-full appearance-none rounded-xl border px-3 py-3 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-50', error ? 'border-red-300 bg-red-50' : 'border-border bg-white focus:border-brand');
+
 // Helper to generate secure nonce for Google ID Token Sign-In
 const generateNonce = async () => {
   const nonce = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))));
@@ -76,19 +83,24 @@ export default function Register() {
   const [showPass, setShowPass] = useState(false);
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
 
+  // Dynamic region state
+  const [provinces, setProvinces] = useState([]);
+  const [regencies, setRegencies] = useState([]);
+  const [districts, setDistricts] = useState([]);
+  const [villages, setVillages] = useState([]);
+
   const [form, setForm] = useState({
     name: '',
     email: '',
     phone: '',
     password: '',
-    provinceCode: '',
-    provinceName: '',
-    cityCode: '',
-    cityName: '',
-    districtCode: '',
-    districtName: '',
-    subdistrictCode: '',
-    subdistrictName: '',
+    province: '',
+    provinceId: '',
+    city: '',
+    cityId: '',
+    kecamatan: '',
+    kecamatanId: '',
+    generalKelurahan: '',
   });
 
   const [errors, setErrors] = useState({});
@@ -140,10 +152,10 @@ export default function Register() {
   }, [resendCooldown]);
 
   // --- Validasi komunitas PKK (hook harus di dalam komponen) ---
-  const locationComplete = Boolean(form.subdistrictCode);
+  const locationComplete = Boolean(form.generalKelurahan);
   // Semua jenis akun (anggota PKK maupun warga umum) butuh komunitas PKK terdaftar di kelurahannya
   const needsPkkCheck = locationComplete;
-  const pkkKey = form.subdistrictCode;
+  const pkkKey = `${form.city}|${form.kecamatan}|${form.generalKelurahan}`;
   const [pkkResult, setPkkResult] = useState({ key: '', active: false });
 
   const isCheckingPkk = needsPkkCheck && pkkResult.key !== pkkKey;
@@ -156,10 +168,24 @@ export default function Register() {
     let cancelled = false;
 
     async function checkPkkCommunity() {
-      // !inner = hanya ambil pkk_units yang region-nya cocok dengan kode kelurahan (format 11.01.01.2001)
-      const { data, error } = await supabase.from(PKK_TABLE).select(`pkk_unit_id, ${REGION_TABLE}!inner(subdistrict_code)`).eq(`${REGION_TABLE}.subdistrict_code`, form.subdistrictCode).limit(1);
+      // Sesuaikan 'pkk_units' dengan nama tabel komunitas PKK di database
+      // ilike = cocok tanpa peduli huruf besar/kecil (API wilayah memakai huruf kapital)
+      // !inner = hanya ambil pkk_units yang region-nya cocok dengan filter di bawah
+      const { data, error } = await supabase
+        .from(PKK_TABLE)
+        .select(`pkk_unit_id, ${REGION_TABLE}!inner(region_id)`)
+        .ilike(`${REGION_TABLE}.${REGION_COLUMNS.city}`, form.city)
+        .ilike(`${REGION_TABLE}.${REGION_COLUMNS.kecamatan}`, form.kecamatan)
+        .ilike(`${REGION_TABLE}.${REGION_COLUMNS.kelurahan}`, form.generalKelurahan)
+        .limit(1);
 
       if (cancelled) return;
+      // DEBUG sementara: hapus setelah berhasil
+      console.log('[PKK check]', {
+        dikirim: { city: form.city, kecamatan: form.kecamatan, kelurahan: form.generalKelurahan },
+        data,
+        error,
+      });
       if (error) console.error('Gagal cek komunitas PKK:', error);
       setPkkResult({ key: pkkKey, active: Boolean(data?.length) });
     }
@@ -168,7 +194,15 @@ export default function Register() {
     return () => {
       cancelled = true;
     };
-  }, [needsPkkCheck, pkkKey, form.subdistrictCode, supabase]);
+  }, [needsPkkCheck, pkkKey, form.city, form.kecamatan, form.generalKelurahan, supabase]);
+
+  // Fetch Provinces on Mount
+  useEffect(() => {
+    fetch('https://www.emsifa.com/api-wilayah-indonesia/api/provinces.json')
+      .then((res) => res.json())
+      .then((data) => setProvinces(data))
+      .catch((err) => console.error('Gagal memuat data provinsi:', err));
+  }, []);
 
   // Initialize Google One Tap
   const initializeGoogleOneTap = async () => {
@@ -224,11 +258,80 @@ export default function Register() {
     }
   };
 
-  // Dipanggil RegionPicker setiap pilihan wilayah berubah
-  function handleRegionChange(patch) {
-    setForm((f) => ({ ...f, ...patch }));
-    setErrors((er) => ({ ...er, province: '', city: '', district: '', subdistrict: '' }));
-  }
+  const handleProvinceChange = (e) => {
+    const selectedName = e.target.value;
+    const selectedObj = provinces.find((p) => p.name === selectedName);
+
+    setForm({
+      ...form,
+      province: selectedName,
+      provinceId: selectedObj ? selectedObj.id : '',
+      city: '',
+      cityId: '',
+      kecamatan: '',
+      kecamatanId: '',
+      generalKelurahan: '',
+    });
+    setErrors({ ...errors, province: '' });
+
+    if (selectedObj) {
+      fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/regencies/${selectedObj.id}.json`)
+        .then((res) => res.json())
+        .then((data) => setRegencies(data))
+        .catch((err) => console.error('Gagal memuat data kabupaten/kota:', err));
+    } else {
+      setRegencies([]);
+    }
+    setDistricts([]);
+    setVillages([]);
+  };
+
+  const handleCityChange = (e) => {
+    const selectedName = e.target.value;
+    const selectedObj = regencies.find((r) => r.name === selectedName);
+
+    setForm({
+      ...form,
+      city: selectedName,
+      cityId: selectedObj ? selectedObj.id : '',
+      kecamatan: '',
+      kecamatanId: '',
+      generalKelurahan: '',
+    });
+    setErrors({ ...errors, city: '' });
+
+    if (selectedObj) {
+      fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/districts/${selectedObj.id}.json`)
+        .then((res) => res.json())
+        .then((data) => setDistricts(data))
+        .catch((err) => console.error('Gagal memuat data kecamatan:', err));
+    } else {
+      setDistricts([]);
+    }
+    setVillages([]);
+  };
+
+  const handleKecamatanChange = (e) => {
+    const selectedName = e.target.value;
+    const selectedObj = districts.find((d) => d.name === selectedName);
+
+    setForm({
+      ...form,
+      kecamatan: selectedName,
+      kecamatanId: selectedObj ? selectedObj.id : '',
+      generalKelurahan: '',
+    });
+    setErrors({ ...errors, kecamatan: '' });
+
+    if (selectedObj) {
+      fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/villages/${selectedObj.id}.json`)
+        .then((res) => res.json())
+        .then((data) => setVillages(data))
+        .catch((err) => console.error('Gagal memuat data kelurahan:', err));
+    } else {
+      setVillages([]);
+    }
+  };
 
   function validate() {
     const e = {};
@@ -236,11 +339,11 @@ export default function Register() {
     if (!form.email.trim()) e.email = 'Email wajib diisi';
     if (!form.phone.trim()) e.phone = 'Nomor HP wajib diisi';
     if (!form.password || form.password.length < 8) e.password = 'Kata sandi minimal 8 karakter';
-    if (!form.provinceCode) e.province = 'Pilih provinsi';
-    if (!form.cityCode) e.city = 'Pilih kota/kabupaten';
-    if (!form.districtCode) e.district = 'Pilih kecamatan';
-    if (!form.subdistrictCode) e.subdistrict = 'Pilih kelurahan';
-    else if (!isPkkActive) e.subdistrict = 'Komunitas PKK di kelurahan ini belum terdaftar';
+    if (!form.province) e.province = 'Pilih provinsi';
+    if (!form.city) e.city = 'Pilih kota/kabupaten';
+    if (!form.kecamatan) e.kecamatan = 'Pilih kecamatan';
+    if (!form.generalKelurahan) e.generalKelurahan = 'Pilih kelurahan';
+    else if (!isPkkActive) e.generalKelurahan = 'Komunitas PKK di kelurahan ini belum terdaftar';
     return e;
   }
 
@@ -265,11 +368,10 @@ export default function Register() {
             full_name: form.name.trim(),
             phone: form.phone.trim(),
             account_type: accountType,
-            province: form.provinceName,
-            city: form.cityName,
-            kecamatan: form.districtName,
-            kelurahan: form.subdistrictName,
-            subdistrict_code: form.subdistrictCode,
+            province: form.province,
+            city: form.city,
+            kecamatan: form.kecamatan,
+            kelurahan: form.generalKelurahan,
           },
         },
       });
@@ -318,7 +420,7 @@ export default function Register() {
           name: form.name.trim(),
           email: form.email.trim(),
           type: accountType,
-          kelurahan: form.subdistrictName,
+          kelurahan: form.generalKelurahan,
           status: 'pending',
           submittedAt: Date.now(),
         },
@@ -511,7 +613,7 @@ export default function Register() {
                     type="button"
                     onClick={() => {
                       setAccountType(t.val);
-                      setErrors((e) => ({ ...e, subdistrict: '' }));
+                      setErrors((e) => ({ ...e, generalKelurahan: '' }));
                     }}
                     className={cn('rounded-2xl border-2 p-3.5 text-left transition-colors', accountType === t.val ? 'border-brand bg-brand-xlight' : 'border-border hover:bg-muted bg-white')}
                   >
@@ -586,22 +688,97 @@ export default function Register() {
                 <p className="text-foreground text-xs font-bold uppercase tracking-wider">Lokasi Domisili</p>
                 {accountType === 'pkk' && isPkkActive && <p className="text-muted-foreground -mt-2 text-xs leading-relaxed">Anda otomatis tergabung dengan komunitas PKK yang terdaftar di kelurahan yang sama.</p>}
 
-                <RegionPicker
-                  value={form}
-                  onChange={handleRegionChange}
-                  // Pesan "PKK belum terdaftar" sudah tampil di banner di bawah, jadi disembunyikan dari dropdown
-                  errors={pkkBlocked ? { ...errors, subdistrict: undefined } : errors}
-                  bgClass="bg-white"
-                  focusClass="focus:border-brand"
-                  showRequired={false}
-                />
+                {/* Province */}
+                <div>
+                  <label htmlFor="reg-province" className="text-foreground mb-1.5 block text-xs font-bold">
+                    Provinsi
+                  </label>
+                  <div className="relative">
+                    <select id="reg-province" value={form.province} onChange={handleProvinceChange} className={selectClass(errors.province)}>
+                      <option value="">Pilih provinsi</option>
+                      {provinces.map((p) => (
+                        <option key={p.id} value={p.name}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="text-muted-foreground pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2" />
+                  </div>
+                  {errors.province && <p className="mt-1 text-xs text-red-500">{errors.province}</p>}
+                </div>
+
+                {/* City */}
+                <div>
+                  <label htmlFor="reg-city" className="text-foreground mb-1.5 block text-xs font-bold">
+                    Kota/Kabupaten
+                  </label>
+                  <div className="relative">
+                    <select id="reg-city" value={form.city} disabled={!form.province} onChange={handleCityChange} className={selectClass(errors.city)}>
+                      <option value="">Pilih kota/kabupaten</option>
+                      {regencies.map((r) => (
+                        <option key={r.id} value={r.name}>
+                          {r.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="text-muted-foreground pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2" />
+                  </div>
+                  {errors.city && <p className="mt-1 text-xs text-red-500">{errors.city}</p>}
+                </div>
+
+                {/* District */}
+                <div>
+                  <label htmlFor="reg-kecamatan" className="text-foreground mb-1.5 block text-xs font-bold">
+                    Kecamatan
+                  </label>
+                  <div className="relative">
+                    <select id="reg-kecamatan" value={form.kecamatan} disabled={!form.city} onChange={handleKecamatanChange} className={selectClass(errors.kecamatan)}>
+                      <option value="">Pilih kecamatan</option>
+                      {districts.map((d) => (
+                        <option key={d.id} value={d.name}>
+                          {d.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="text-muted-foreground pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2" />
+                  </div>
+                  {errors.kecamatan && <p className="mt-1 text-xs text-red-500">{errors.kecamatan}</p>}
+                </div>
+
+                {/* Village / Kelurahan */}
+                <div>
+                  <label htmlFor="reg-generalKelurahan" className="text-foreground mb-1.5 block text-xs font-bold">
+                    Kelurahan
+                  </label>
+                  <div className="relative">
+                    <select
+                      id="reg-generalKelurahan"
+                      value={form.generalKelurahan}
+                      disabled={!form.kecamatan}
+                      onChange={(e) => {
+                        setForm({ ...form, generalKelurahan: e.target.value });
+                        setErrors({ ...errors, generalKelurahan: '' });
+                      }}
+                      className={selectClass(errors.generalKelurahan)}
+                    >
+                      <option value="">Pilih kelurahan</option>
+                      {villages.map((v) => (
+                        <option key={v.id} value={v.name}>
+                          {v.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="text-muted-foreground pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2" />
+                  </div>
+                  {errors.generalKelurahan && !pkkBlocked && <p className="mt-1 text-xs text-red-500">{errors.generalKelurahan}</p>}
+                </div>
 
                 {pkkActive && (
                   <div role="status" className="border-brand-light bg-brand-xlight flex items-start gap-2.5 rounded-xl border p-3">
                     <CheckCircle2 className="text-brand mt-0.5 h-4 w-4 shrink-0" />
                     <div>
                       <p className="text-brand-dark text-xs font-black">{accountType === 'pkk' ? 'Komunitas PKK Anda sudah aktif' : 'Komunitas PKK kelurahan ini sudah aktif'}</p>
-                      <p className="text-brand-dark/80 mt-0.5 text-xs">PKK Kel. {form.subdistrictName} sudah terdaftar di PARAS. Silakan lanjutkan pendaftaran.</p>
+                      <p className="text-brand-dark/80 mt-0.5 text-xs">PKK Kel. {form.generalKelurahan} sudah terdaftar di PARAS. Silakan lanjutkan pendaftaran.</p>
                     </div>
                   </div>
                 )}
@@ -613,7 +790,7 @@ export default function Register() {
                       <div>
                         <p className="text-xs font-black text-amber-800">Komunitas PKK belum terdaftar</p>
                         <p className="mt-0.5 text-xs leading-relaxed text-amber-700">
-                          PKK Kel. {form.subdistrictName} belum terdaftar di PARAS. Ketua PKK perlu mendaftarkan komunitasnya terlebih dahulu sebelum anggota maupun warga dapat membuat akun.
+                          PKK Kel. {form.generalKelurahan} belum terdaftar di PARAS. Ketua PKK perlu mendaftarkan komunitasnya terlebih dahulu sebelum anggota maupun warga dapat membuat akun.
                         </p>
                       </div>
                     </div>

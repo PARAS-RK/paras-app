@@ -7,8 +7,10 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Camera, CheckCircle2, ChevronDown, ChevronUp, ClipboardList, Clock3, Eye, FileCheck2, MapPin, ShieldCheck, Siren, Target, Users, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useReportContext } from '@/context/ReportContext';
-import { pct, useAksiState } from '@/lib/aksiStore';
+import { useAdminAksi } from '@/lib/adminAksi';
 import { archivedSeed } from './ActionManagement';
+
+const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
 
 
 const communityResidentNames = [
@@ -540,10 +542,14 @@ export default function HandlingArchive() {
 
     const activeTab = searchParams.get('tab') === 'community' ? 'community' : 'emergency';
     const { reports } = useReportContext();
-    const { aksi } = useAksiState();
+    const { aksi } = useAdminAksi();
 
     const archivedReports = reports
-        .filter((report) => report.handledBy === 'bpbd' && report.status === 'handled')
+        .filter((report) =>
+            report.handledBy === 'bpbd' &&
+            ['resolved', 'handled'].includes(report.status) &&
+            report.dashboardRoute !== 'community'
+        )
         .map((report) => ({
             id: report.id,
             title: report.title,

@@ -7,9 +7,9 @@ export const instant = false;
 export const metadata = { title: "Dashboard Admin | PARAS" };
 
 export default async function AdminDashboardPage() {
-  const admin = await getAdminSession();
-  if (!admin) redirect("/admin/login");
+    const admin = await getAdminSession();
+    if (!admin) redirect("/admin/login");
 
-  const counts = await getUserCounts(admin);
-  return <AdminDashboard userCounts={counts} />;
+    const counts = await getUserCounts(admin);
+    return <AdminDashboard userCounts={counts} />;
 }

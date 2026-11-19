@@ -176,3 +176,137 @@ ACTIVITIES = [
         "indicator": "Sampah dapur terkelola mandiri dan menghasilkan pupuk kompos siap pakai untuk tanaman"
     }
 ]
+
+
+COMMUNITY_DRAFT_FALLBACK_ALIASES = {
+    "sampah": "sampah dan kebersihan",
+    "sampah dan kebersihan": "sampah dan kebersihan",
+    "banjir": "banjir dan drainase",
+    "banjir dan drainase": "banjir dan drainase",
+    "jalan rusak": "jalan rusak",
+    "jalan_rusak": "jalan rusak",
+    "penerangan": "penerangan umum",
+    "penerangan umum": "penerangan umum",
+    "keamanan": "keamanan lingkungan",
+    "keamanan lingkungan": "keamanan lingkungan",
+    "lainnya": "lainnya",
+}
+
+
+COMMUNITY_DRAFT_FALLBACKS = {
+    "sampah dan kebersihan": {
+        "name": "Penanganan Penumpukan Sampah Liar dan Kebersihan",
+        "description": "Draf cadangan berdasarkan kategori Sampah dan Kebersihan. Tinjau, lengkapi, dan sesuaikan sebelum diterbitkan.",
+        "steps": [
+            "Foto dan catat lokasi tumpukan sampah liar tersebut.",
+            "Ajukan permohonan pengangkutan sampah darurat kepada Dinas Kebersihan atau Kelurahan.",
+            "Pasang papan larangan membuang sampah di lokasi terkait.",
+            "Inisiasi pembuatan tempat pembuangan sampah sementara yang terkelola secara kolektif.",
+            "Lakukan patroli swadaya warga untuk mencegah pembuangan sampah berulang.",
+        ],
+        "participantTarget": "30",
+        "duration": "2-3 jam",
+        "registrationRange": "Usulan: 1 minggu sebelum pelaksanaan",
+        "implementationRange": "Usulan: akhir pekan terdekat",
+        "category": "Sampah dan Kebersihan",
+    },
+    "banjir dan drainase": {
+        "name": "Penanganan Banjir dan Drainase Tersumbat",
+        "description": "Draf cadangan berdasarkan kategori Banjir dan Drainase. Tinjau, lengkapi, dan sesuaikan sebelum diterbitkan.",
+        "steps": [
+            "Identifikasi titik sumbatan utama pada saluran drainase.",
+            "Koordinasikan kegiatan kerja bakti pembersihan saluran air bersama warga sekitar.",
+            "Laporkan endapan lumpur parah atau kerusakan saluran kepada Dinas Pekerjaan Umum (PU).",
+            "Pastikan aliran air menuju sungai utama kembali lancar.",
+            "Buat jadwal pemeliharaan rutin mingguan atau bulanan untuk saluran air.",
+        ],
+        "participantTarget": "30",
+        "duration": "2-3 jam",
+        "registrationRange": "Usulan: 1 minggu sebelum pelaksanaan",
+        "implementationRange": "Usulan: akhir pekan terdekat",
+        "category": "Banjir dan Drainase",
+    },
+    "jalan rusak": {
+        "name": "Perbaikan Infrastruktur Jalan Rusak",
+        "description": "Draf cadangan berdasarkan kategori Jalan Rusak. Tinjau, lengkapi, dan sesuaikan sebelum diterbitkan.",
+        "steps": [
+            "Dokumentasikan kerusakan jalan beserta perkiraan ukuran lubang.",
+            "Pasang rambu atau tanda peringatan sementara di sekitar jalan rusak untuk keselamatan.",
+            "Ajukan usulan perbaikan melalui musyawarah perencanaan pembangunan (Musrenbang) atau aplikasi aduan pemerintah.",
+            "Lakukan penambalan darurat swadaya jika membahayakan pengendara secara mendesak.",
+            "Pantau proses tindak lanjut perbaikan oleh dinas terkait.",
+        ],
+        "participantTarget": "30",
+        "duration": "3-4 jam",
+        "registrationRange": "Usulan: 1 minggu sebelum pelaksanaan",
+        "implementationRange": "Usulan: akhir pekan terdekat",
+        "category": "Jalan Rusak",
+    },
+    "penerangan umum": {
+        "name": "Pemeliharaan Penerangan Jalan Umum (PJU)",
+        "description": "Draf cadangan berdasarkan kategori Penerangan Umum. Tinjau, lengkapi, dan sesuaikan sebelum diterbitkan.",
+        "steps": [
+            "Catat nomor tiang lampu atau titik koordinat PJU yang mati.",
+            "Laporkan kerusakan lampu kepada Dinas Perhubungan atau bagian kebersihan dan pertamanan setempat.",
+            "Koordinasikan dengan ketua RT/RW setempat untuk perbaikan lampu swadaya skala kecil.",
+            "Lakukan pengecekan berkala terhadap kondisi lampu penerangan di lingkungan sekitar.",
+        ],
+        "participantTarget": "20",
+        "duration": "2-3 jam",
+        "registrationRange": "Usulan: 1 minggu sebelum pelaksanaan",
+        "implementationRange": "Usulan: akhir pekan terdekat",
+        "category": "Penerangan Umum",
+    },
+    "keamanan lingkungan": {
+        "name": "Peningkatan Keamanan Lingkungan",
+        "description": "Draf cadangan berdasarkan kategori Keamanan Lingkungan. Tinjau, lengkapi, dan sesuaikan sebelum diterbitkan.",
+        "steps": [
+            "Aktifkan kembali pos ronda dan jadwal Siskamling secara rutin bersama warga.",
+            "Tingkatkan koordinasi dengan Bhabinkamtibmas dan Babinsa setempat.",
+            "Pasang fasilitas pendukung seperti CCTV swadaya atau lampu sorot di titik rawan.",
+            "Buat aturan tamu wajib lapor 1x24 jam bagi pendatang atau warga asing.",
+        ],
+        "participantTarget": "25",
+        "duration": "2-3 jam",
+        "registrationRange": "Usulan: 1 minggu sebelum pelaksanaan",
+        "implementationRange": "Usulan: akhir pekan terdekat",
+        "category": "Keamanan Lingkungan",
+    },
+    "lainnya": {
+        "name": "Aksi Gotong Royong Warga",
+        "description": "Draf cadangan umum untuk kategori Lainnya. Tinjau, lengkapi, dan sesuaikan sebelum diterbitkan.",
+        "steps": [
+            "Kumpulkan warga dan petakan masalah utama di lokasi.",
+            "Bentuk tim kecil koordinator dan pembagian tugas.",
+            "Lakukan aksi gotong royong sesuai kebutuhan lokasi.",
+            "Dokumentasikan hasil dan laporkan ke Ketua PKK.",
+            "Jadwalkan pemantauan lanjutan secara berkala.",
+        ],
+        "participantTarget": "30",
+        "duration": "2-3 jam",
+        "registrationRange": "Usulan: 1 minggu sebelum pelaksanaan",
+        "implementationRange": "Usulan: akhir pekan terdekat",
+        "category": "Lainnya",
+    },
+}
+
+
+def normalize_community_category(value):
+    text = " ".join(str(value or "").split()).strip().lower().replace("_", " ")
+    return COMMUNITY_DRAFT_FALLBACK_ALIASES.get(text, text)
+
+
+def get_community_draft_fallback(category):
+    key = normalize_community_category(category)
+    template = COMMUNITY_DRAFT_FALLBACKS.get(key, COMMUNITY_DRAFT_FALLBACKS["lainnya"])
+    result = dict(template)
+    clean_category = " ".join(str(category or "").split()).strip()
+    if clean_category:
+        result["category"] = clean_category
+
+    # Frontend and Supabase expect "steps" as multiline text, not a JSON array.
+    steps = result.get("steps")
+    if isinstance(steps, list):
+        result["steps"] = "\n".join(str(step).strip() for step in steps if str(step).strip())
+
+    return result

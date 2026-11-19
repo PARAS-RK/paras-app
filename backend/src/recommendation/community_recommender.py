@@ -50,7 +50,10 @@ def get_dynamic_recommendations(user_report: str, top_k=2):
         results.append({
             "kegiatan": item.get("activity", "Aksi Warga"),
             "skor": round(float(scores[idx]), 3),
-            "langkah": item.get("steps", [])
+            "langkah": item.get("steps", []),
+            "problem": item.get("problem", ""),
+            "responsible": item.get("responsible", ""),
+            "indicator": item.get("indicator", ""),
         })
         
     return results

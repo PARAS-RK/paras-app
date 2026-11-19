@@ -8,7 +8,15 @@ import {
 import Link from "next/link";
 import { cn } from '@/lib/utils';
 import { useReportContext } from '@/context/ReportContext';
-import { markComplete, pct, useAksiState, approveFirstPending, rejectEvidence, getCompletedChecklistTotal } from '@/lib/aksiStore';
+import { useAdminAksi } from '@/lib/adminAksi';
+
+const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+
+function getCompletedChecklistTotal(action) {
+    return (action.participantList || []).reduce((total, participant) => {
+        return total + (participant.checklist || []).filter((item) => item.status === 'selesai').length;
+    }, 0);
+}
 
 export const archivedSeed = [
     { id: 'archive-01', title: 'Kerja Bakti Bersihkan Taman RW 05', impact: '1 taman selesai dipulihkan', participants: 36, closedAt: '18 Oktober 2026' },
@@ -20,23 +28,16 @@ export function buildSavings(reports) {
 
     reports
         .filter((report) =>
-            report.handledBy === 'community' &&
-            ['accepted', 'overridden'].includes(report.dashboardDecision) &&
+            report.dashboardDecision === 'accepted' &&
+            report.dashboardRoute === 'community' &&
             report.status !== 'handled' &&
             report.status !== 'rejected'
         )
         .forEach((report) => {
-            const category = (report.aiCategory || 'Kategori lainnya')
-                .split('/')[0].trim();
+            const category = String(report.aiCategory || report.title || 'Kategori lainnya')
+                .split('/')[0].trim() || 'Kategori lainnya';
 
-            const isEmergencyOverride =
-                report.dashboardDecision === 'overridden' &&
-                report.dashboardRoute === 'community' &&
-                report.overrideFrom === 'bpbd';
-
-            const key = isEmergencyOverride
-                ? `override-${report.id}`
-                : `${report.regionId || report.regionLabel}|${category}`;
+            const key = `${report.regionId || report.regionLabel || report.area || 'wilayah'}|${category}`;
 
             const current = grouped.get(key) ?? {
                 key,
@@ -44,32 +45,9 @@ export function buildSavings(reports) {
                 regionId: report.regionId,
                 category,
                 reports: [],
-                userScores: new Map(),
-                points: 0,
-                target: 10,
-                isEmergencyOverride,
             };
 
             current.reports.push(report);
-
-            if (report.userId) {
-                const score = Number(report.urgency) || 0;
-                const previousScore = current.userScores.get(report.userId) || 0;
-
-                current.userScores.set(
-                    report.userId,
-                    Math.max(previousScore, score)
-                );
-            }
-
-            current.points = Math.min(
-                current.target,
-                [...current.userScores.values()].reduce(
-                    (total, score) => total + score,
-                    0
-                )
-            );
-
             grouped.set(key, current);
         });
 
@@ -133,7 +111,7 @@ function HistoryCard({ completed }) {
     );
 }
 
-function ActiveActionCard({ action, expanded, onToggle, onComplete }) {
+function ActiveActionCard({ action, expanded, onToggle, onComplete, onVerifyProof }) {
     const [selectedProof, setSelectedProof] = useState(null);
     const [overviewOpen, setOverviewOpen] = useState(false);
     const [visibleParticipants, setVisibleParticipants] = useState(5);
@@ -534,10 +512,11 @@ function ActiveActionCard({ action, expanded, onToggle, onComplete }) {
                                                 <button
                                                     type="button"
                                                     disabled={!rejectionReason.trim()}
-                                                    onClick={() => {
-                                                        const success = rejectEvidence(
+                                                    onClick={async () => {
+                                                        const success = await onVerifyProof(
                                                             action.id,
                                                             selectedProof.evidenceId,
+                                                            'rejected',
                                                             rejectionReason.trim()
                                                         );
 
@@ -553,10 +532,12 @@ function ActiveActionCard({ action, expanded, onToggle, onComplete }) {
 
                                                 <button
                                                     type="button"
-                                                    onClick={() => {
-                                                        const success = approveFirstPending(
+                                                    onClick={async () => {
+                                                        const success = await onVerifyProof(
                                                             action.id,
-                                                            selectedProof.evidenceId
+                                                            selectedProof.evidenceId,
+                                                            'verified',
+                                                            ''
                                                         );
 
                                                         if (success) {
@@ -686,7 +667,7 @@ function ArchivedActionCard({ item }) {
 
 function ActionManagementContent() {
     const { reports, completeCommunityReports } = useReportContext();
-    const { aksi } = useAksiState();
+    const { aksi, verifyProof, completeAction } = useAdminAksi();
     const [expandedId, setExpandedId] = useState(null);
     const [confirmCompleteAction, setConfirmCompleteAction] = useState(null);
     const clusters = useMemo(() => buildSavings(reports), [reports]);
@@ -723,6 +704,7 @@ function ActionManagementContent() {
                                 expanded={expandedId === action.id}
                                 onToggle={() => setExpandedId(expandedId === action.id ? null : action.id)}
                                 onComplete={handleCompleteAction}
+                                onVerifyProof={verifyProof}
                             />
                         ))}
                     </div>
@@ -760,14 +742,18 @@ function ActionManagementContent() {
 
                             <button
                                 type="button"
-                                onClick={() => {
+                                onClick={async () => {
                                     const action = confirmCompleteAction;
-                                    markComplete(action.id);
-                                    completeCommunityReports(
-                                        action.sourceReportIds || [],
-                                        action.id,
-                                        action.title
-                                    );
+                                    const ok = await completeAction(action.id);
+
+                                    if (ok) {
+                                        completeCommunityReports(
+                                            action.sourceReportIds || [],
+                                            action.id,
+                                            action.title
+                                        );
+                                    }
+
                                     setConfirmCompleteAction(null);
                                 }}
                                 className="rounded-xl bg-brand px-4 py-2.5 text-xs font-bold text-white hover:bg-brand-dark"
@@ -801,21 +787,7 @@ function ActionSavingsContent() {
                     .filter(Boolean)
             ).size;
 
-            const hasEnoughPoints = cluster.points >= cluster.target;
-            const hasEnoughReporters = uniqueReporters >= 3;
-
-            const isEmergencyOverride = cluster.reports.some(
-                (report) =>
-                    report.dashboardDecision === 'overridden' &&
-                    report.dashboardRoute === 'community' &&
-                    report.overrideFrom === 'bpbd'
-            );
-
-            const ready =
-                cluster.isEmergencyOverride ||
-                (hasEnoughPoints && hasEnoughReporters);
-
-            return !ready;
+            return uniqueReporters < 3;
         });
     }, [allClusters]);
 
@@ -832,7 +804,7 @@ function ActionSavingsContent() {
                 <Link href="/admin/actions" className="inline-flex items-center gap-1.5 text-xs font-black text-brand hover:text-brand-dark"><ArrowLeft className="h-4 w-4" /> Kembali ke Manajemen Aksi</Link>
                 <div className="mt-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
                     <div>
-                        <p className="text-xs font-black uppercase tracking-wider text-amber-700">Praklasifikasi AI</p>
+                        <p className="text-xs font-black uppercase tracking-wider text-amber-700">Pengelompokan Laporan</p>
                         <h1 className="mt-1 text-2xl font-black text-slate-900">Tabungan Aksi</h1>
                         <p className="mt-1 text-sm text-slate-500">Laporan berkondisi serupa di wilayah yang sama diakumulasi menuju ambang pembentukan aksi.</p>
                     </div>
@@ -841,26 +813,31 @@ function ActionSavingsContent() {
             </div>
 
             <div className="rounded-2xl border border-brand-light bg-brand-xlight p-4">
-                <p className="flex items-start gap-2 text-xs leading-relaxed text-brand-dark"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /> Asisten AI telah mengelompokkan laporan berdasarkan kondisi, kategori, dan lokasi. Ketua PKK cukup meninjau draf akhir ketika ambang poin tercapai.</p>
+                <p className="flex items-start gap-2 text-xs leading-relaxed text-brand-dark"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /> Asisten AI telah mengelompokkan laporan berdasarkan kondisi, kategori, dan lokasi. Ketua PKK cukup meninjau draf akhir ketika 3 pelapor terpenuhi.</p>
             </div>
 
             {clusters.length > 0 ? (
                 <div className="grid gap-4 lg:grid-cols-2">
                     {clusters.map((cluster) => {
-                        const progress = pct(cluster.points, cluster.target);
+                        const uniqueReporters = new Set(
+                            cluster.reports
+                                .map((report) => report.userId)
+                                .filter(Boolean)
+                        ).size;
+                        const reporterProgress = Math.min(100, Math.round((uniqueReporters / 3) * 100));
                         const expanded = expandedClusterKey === cluster.key;
                         return (
                             <article key={cluster.key} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                                 <div className="flex items-start justify-between gap-3">
                                     <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-700"><Sparkles className="h-5 w-5" /></span>
-                                    <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-black text-amber-800">{cluster.points < cluster.target ? 'Mengumpulkan Poin' : 'Menunggu Minimal 3 Pelapor'}</span>
+                                    <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-black text-amber-800">{uniqueReporters < 3 ? 'Mengumpulkan Pelapor' : 'Siap Dibentuk'}</span>
                                 </div>
                                 <h2 className="mt-4 font-black text-slate-900">{cluster.category}</h2>
                                 <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500"><MapPin className="h-3.5 w-3.5 text-brand" /> {cluster.area}</p>
 
                                 <div className="mt-5">
-                                    <div className="flex justify-between text-xs font-bold text-slate-500"><span>Ambang pembentukan aksi</span><span>{cluster.points}/{cluster.target} poin</span></div>
-                                    <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-amber-500" style={{ width: `${progress}%` }} /></div>
+                                    <div className="flex justify-between text-xs font-bold text-slate-500"><span>Syarat pembentukan aksi</span><span>{uniqueReporters}/3 pelapor</span></div>
+                                    <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-amber-500" style={{ width: `${reporterProgress}%` }} /></div>
                                 </div>
 
                                 <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
@@ -872,12 +849,10 @@ function ActionSavingsContent() {
                                         <div className="divide-y divide-slate-100">
                                             {cluster.reports.map((report) => (
                                                 <div key={report.id} className="flex items-center gap-3 bg-white p-3">
-                                                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-xs font-black text-amber-700">+{report.urgency}</span>
                                                     <div className="min-w-0 flex-1">
                                                         <p className="truncate text-xs font-black text-slate-800">{report.title}</p>
                                                         <p className="mt-0.5 font-mono text-xs text-slate-400">#{report.id}</p>
                                                     </div>
-                                                    <span className="shrink-0 text-xs font-black text-amber-700">{report.urgency} poin</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -886,13 +861,9 @@ function ActionSavingsContent() {
 
                                 <div className="mt-5 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-slate-100 px-4 py-2.5 text-xs font-black text-slate-500">
                                     <Clock3 className="h-4 w-4" />
-                                    {cluster.points < cluster.target
-                                        ? `Menunggu ${cluster.target - cluster.points} poin lagi`
-                                        : `Menunggu ${3 - new Set(
-                                            cluster.reports
-                                                .map((report) => report.reporter?.trim().toLowerCase())
-                                                .filter(Boolean)
-                                        ).size} pelapor lagi`}
+                                    {uniqueReporters < 3
+                                        ? `Menunggu ${3 - uniqueReporters} pelapor lagi`
+                                        : 'Siap dibentuk'}
                                 </div>
                             </article>
                         );
@@ -936,7 +907,7 @@ export function ActionSavings() {
 }
 
 function ActionHistoryContent() {
-    const { aksi } = useAksiState();
+    const { aksi } = useAdminAksi();
     const completed = aksi.filter((action) => action.status === 'selesai');
     const history = [
         ...completed.map((action) => ({

@@ -8,16 +8,23 @@ export async function POST(request) {
       return NextResponse.json({ error: "Pesan diperlukan" }, { status: 400 });
     }
 
-    // 1. Kirim laporan ke FastAPI Python backend
+    // 1. Kirim laporan ke endpoint rekomendasi komunitas di FastAPI.
     const fastapiUrl = process.env.FASTAPI_BASE_URL || "http://127.0.0.1:8000";
-    const response = await fetch(`${fastapiUrl}/api/recommend-action`, {
+    const response = await fetch(`${fastapiUrl}/recommendations/community`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ report: message, top_k: 2 }),
     });
 
-    const aiData = await response.json();
-    if (!response.ok) throw new Error(aiData.detail || "Gagal memproses AI");
+    const aiResponse = await response.json();
+    if (!response.ok) throw new Error(aiResponse.detail || "Gagal memproses AI");
+
+    const results = Array.isArray(aiResponse.results) ? aiResponse.results : [];
+    const aiData = {
+      rekomendasi_kegiatan: results.map((item) => item.kegiatan).filter(Boolean).join('\n'),
+      panduan_sop: aiResponse.text || '',
+      results,
+    };
 
     // 2. Inisialisasi Supabase Admin Client di server-side
     const supabase = createClient(

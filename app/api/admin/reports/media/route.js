@@ -16,7 +16,7 @@ export async function GET() {
     }
 
     const supabase = createAdminClient();
-    const regionId = adminSession.regionID;
+    const regionId = adminSession.regionId;
 
     // Ambil ID laporan yang berada di wilayah admin
     const { data: reports, error: reportError } = await supabase

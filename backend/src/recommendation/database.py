@@ -2,6 +2,9 @@ import os
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
+from .config import PROJECT_DIR
+
+load_dotenv(PROJECT_DIR / ".env.local")
 load_dotenv()
 
 SUPABASE_URL = os.getenv("NEXT_PUBLIC_SUPABASE_URL")

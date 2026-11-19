@@ -6,9 +6,8 @@ export async function GET(request) {
   try {
     // Validasi sesi Ketua PKK
     const { admin } = await checkAdmin();
-    console.log("HASIL CHECK ADMIN:", admin);
 
-    if (!admin?.userId || !admin?.regionID) {
+    if (!admin?.userId || !admin?.regionId) {
       return NextResponse.json(
         { error: "Akses admin ditolak." },
         { status: 401 }
@@ -23,10 +22,13 @@ export async function GET(request) {
       "damkar",
       "ambulance",
       "police",
-      "other"
+      "other",
+      "pln",
+      "sar",
+      "darurat"
     ];
 
-    if (!agencyType || !allowedTypes.includes(agencyType)) {
+    if (agencyType && !allowedTypes.includes(agencyType)) {
       return NextResponse.json(
         { error: "Jenis instansi tidak valid." },
         { status: 400 }
@@ -35,18 +37,22 @@ export async function GET(request) {
 
     const supabase = createAdminClient();
 
-    const { data, error } = await supabase
+    let query = supabase
       .from("emergency_contacts")
-      .select("agency_type, agency_name, phone_number")
-      .eq("region_id", admin.regionID)
-      .eq("agency_type", agencyType)
+      .select("id, agency_type, agency_name, phone_number, notes")
+      .eq("region_id", admin.regionId)
       .eq("is_active", true)
-      .maybeSingle();
+      .order("agency_type", { ascending: true })
+      .order("agency_name", { ascending: true });
+
+    if (agencyType) query = query.eq("agency_type", agencyType);
+
+    const { data, error } = await query;
 
     if (error) throw error;
 
     return NextResponse.json({
-      contact: data ?? null
+      contacts: data ?? []
     });
 
   } catch (error) {
