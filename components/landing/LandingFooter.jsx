@@ -2,7 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Mail, MapPin, Phone } from 'lucide-react';
 
-import logo from '../../public/logo.svg';
+import logo from '@/public/logo.svg';
 
 const socials = [
   {

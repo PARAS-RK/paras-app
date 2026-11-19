@@ -9,7 +9,7 @@ import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, Clock, Eye, EyeOf
 
 import { contactFor, formatRemaining } from '../../lib/memberStore';
 import { cn } from '../../lib/utils';
-import logo from '../../public/logo_paras_1.png';
+import logo from '@/public/logo.svg';
 import { createClient } from '../../lib/supabase/client';
 
 const PKK_TABLE = 'pkk_units';
