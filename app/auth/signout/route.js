@@ -14,5 +14,12 @@ export async function POST(request) {
   const next = String(formData.get("next") ?? "");
   const destination = ALLOWED_NEXT.includes(next) ? next : "/login";
 
-  return NextResponse.redirect(new URL(destination, request.url), { status: 303 });
+  // Ambil domain asli dari proxy Railway atau env, fallback ke request.url untuk lokal
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const forwardedProto = request.headers.get("x-forwarded-proto") || "https";
+  const baseUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    (forwardedHost ? `${forwardedProto}://${forwardedHost}` : request.url);
+
+  return NextResponse.redirect(new URL(destination, baseUrl), { status: 303 });
 }

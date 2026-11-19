@@ -78,7 +78,7 @@ function Sidebar({ mobile = false, pathname, onNavigate, onClose }) {
       {/* Footer sidebar */}
       <div className="shrink-0 space-y-2 border-t border-slate-800 p-4">
         <div className="flex items-center gap-3 px-2 py-1.5">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-black text-white">{admin.initials}</div>
+          <AdminAvatar className="h-8 w-8 text-xs" />
           <div className="min-w-0">
             <p className="truncate text-xs font-bold text-white">{admin.name}</p>
             <p className="truncate text-xs text-slate-500">{admin.email}</p>
@@ -87,10 +87,13 @@ function Sidebar({ mobile = false, pathname, onNavigate, onClose }) {
 
         <form action="/auth/signout" method="post">
           <input type="hidden" name="next" value="/admin/login" />
-          <button type="submit" className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-red-950 hover:text-red-400">
-            <LogOut className="h-4 w-4" /> Keluar
-          </button>
-        </form>
+            <button
+              type="submit"
+              className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-red-950 hover:text-red-400"
+            >
+              <LogOut className="h-4 w-4" /> Keluar
+            </button>
+        </form>      
       </div>
     </aside>
   );
