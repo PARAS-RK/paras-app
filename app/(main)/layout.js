@@ -1,13 +1,19 @@
 import Navbar from '../../components/Navbar';
 import FloatingLaporButton from '../../components/FloatingLaporButton';
 import { ReportProvider } from '../../context/ReportContext';
+import { WilayahProvider } from '@/context/info/WilayahProvider';
+import { BmkgProvider } from '@/context/info/BmkgProvider';
 
 export default function MainLayout({ children }) {
   return (
     <ReportProvider>
-      <Navbar />
-      <main className="flex-1">{children}</main>
-      <FloatingLaporButton />
+      <WilayahProvider>
+        <BmkgProvider>
+          <Navbar />
+          <main className="flex-1">{children}</main>
+          <FloatingLaporButton />
+        </BmkgProvider>
+      </WilayahProvider>
     </ReportProvider>
   );
 }

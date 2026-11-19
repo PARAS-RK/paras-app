@@ -21,9 +21,10 @@ export default function AksiDetail({ id }) {
       try {
         const supabase = createClient();
         
+        // Tarik data aksi beserta seluruh kolom relasi dari tabel regions
         const { data: actionData, error: actionError } = await supabase
           .from('community_actions')
-          .select('*')
+          .select('*, regions(*)')
           .eq('action_id', id)
           .maybeSingle();
 
@@ -45,7 +46,7 @@ export default function AksiDetail({ id }) {
           .select('*', { count: 'exact', head: true })
           .eq('action_id', id);
 
-        // Hitung jumlah peserta yang sudah menyelesaikan aksi berdasarkan bukti foto terunggah (bypass RLS count limit)
+        // Hitung jumlah peserta yang sudah menyelesaikan aksi berdasarkan bukti foto terunggah
         const { count: achievedCount } = await supabase
           .from('action_completion_proofs')
           .select('*', { count: 'exact', head: true })
@@ -114,6 +115,24 @@ export default function AksiDetail({ id }) {
           completed: completedTaskIds.includes(t.action_task_id),
         }));
 
+        // Format string lokasi dinamis dari relasi regions Supabase (mendeteksi berbagai variasi nama kolom)
+        let formattedLocation = 'Lokasi Wilayah Terdaftar';
+        if (actionData.regions) {
+          const reg = actionData.regions;
+          const parts = [
+            reg.subdistrict || reg.kelurahan || reg.desa,
+            reg.district || reg.kecamatan,
+            reg.city || reg.kabupaten || reg.kota,
+            reg.province || reg.provinsi
+          ].filter(Boolean);
+
+          if (parts.length > 0) {
+            formattedLocation = parts.join(', ');
+          } else {
+            formattedLocation = `ID Wilayah: ${actionData.region_id}`;
+          }
+        }
+
         setAksi({
           id: actionData.action_id,
           title: actionData.action_title,
@@ -129,9 +148,9 @@ export default function AksiDetail({ id }) {
             time: '08:00 WIB',
             place: 'Titik Kumpul Warga',
           },
-          location: 'Bandung, Jawa Barat',
+          location: formattedLocation,
           coordinator: {
-            name: 'Ketua PKK RW',
+            name: actionData.action_coordinator || 'Ketua PKK RW',
             phone: '6281234567890',
             initials: 'KP',
           },

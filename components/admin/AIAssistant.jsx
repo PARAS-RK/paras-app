@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { AlertTriangle, Archive, Bot, CalendarDays, Camera, Check, CheckCircle2, ChevronDown, ChevronUp, CircleDot, ClipboardCheck, Clock3, Copy, Download, FileText, Phone, LoaderCircle, MapPin, Pencil, Send, ShieldCheck, Siren, Sparkles, Upload, Users, XCircle, X, } from 'lucide-react';
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { cn } from '@/lib/utils';
 import { useReportContext } from '@/context/ReportContext';
 import { publishCommunityAksi, useAksiState } from '@/lib/aksiStore';
-import { areaFull, areaLabel } from '@/lib/currentUser';
+import { useAdmin } from '@/context/AdminContext';
 const statusConfig = {
     pending: { label: 'Pending Review', className: 'bg-amber-100 text-amber-800', icon: Clock3 },
     in_progress: { label: 'Diproses', className: 'bg-blue-100 text-blue-800', icon: LoaderCircle },
@@ -29,17 +29,10 @@ const queueTabs = [
     },
 ];
 
-const exactLocations = {
-    'LP-2024-089': `Depan RT 04 / RW 05, ${areaLabel}`,
-    'LP-2024-088': `Permukiman RT 04 / RW 05, ${areaLabel}`,
-    'LP-2024-087': `Area usaha RW 05, ${areaLabel}`,
-    'LP-2024-086': `Jl. Melati RW 03, ${areaLabel}`,
-    'LP-2024-085': `Lahan kosong RT 05 / RW 05, ${areaLabel}`,
-    'LP-2024-082': `RT 02 / RT 04 / RT 05, ${areaLabel}`,
-};
-function incidentLocation(report) {
-    return exactLocations[report.id] || report.location || areaLabel;
+function incidentLocation(report, areaLabel) {
+    return report.locationDetail || report.regionLabel || 'Lokasi beum tersedia';
 }
+
 function urgencyLevel(report) {
     if (report.urgency >= 7)
         return { label: 'Tinggi/Darurat', className: 'bg-red-100 text-red-700', icon: Siren };
@@ -47,11 +40,12 @@ function urgencyLevel(report) {
         return { label: 'Sedang', className: 'bg-orange-100 text-slate-900', icon: AlertTriangle };
     return { label: 'Rendah', className: 'bg-slate-100 text-slate-700', icon: CircleDot };
 }
-function bpbdTemplate(report) {
-    return `Yth. BPBD Jakarta Selatan, mohon bantuan penanganan segera untuk wilayah ${areaLabel}.
+function bpbdTemplate(report, areaLabel, areaFull) {
+    return `Yth. BPBD,
 
 Kejadian: ${report.title}
-TKP: ${incidentLocation(report)}
+Pelapor: ${report.reporter || 'Tidak diketahui'}
+TKP: ${incidentLocation(report, areaLabel)}
 Wilayah administratif: ${areaFull}
 Waktu laporan: ${report.date}
 Tingkat urgensi: ${urgencyLevel(report).label}
@@ -60,6 +54,7 @@ Situasi: ${report.details}
 
 Mohon konfirmasi tindak lanjut. Terima kasih.`;
 }
+
 function downloadEvidenceImage(report) {
     const safeTitle = report.title.replace(/[<>&]/g, '');
     const safeLocation = incidentLocation(report).replace(/[<>&]/g, '');
@@ -72,20 +67,111 @@ function downloadEvidenceImage(report) {
     URL.revokeObjectURL(url);
 }
 function EvidenceBox({ report, urgent = false }) {
-    return (<div className="mt-6">
-      <p className="flex items-center gap-1.5 text-xs font-black text-slate-800"><Camera className={cn('h-4 w-4', urgent ? 'text-red-600' : 'text-brand')}/> Bukti Foto Warga</p>
-      <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-        <div className="flex aspect-video flex-col items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 text-slate-400">
-          <Camera className="h-10 w-10"/>
-          <p className="mt-3 text-xs font-black">Pratinjau bukti laporan</p>
-          <p className="mt-1 text-xs">#{report.id}</p>
+    const [selectedImage, setSelectedImage] = useState(null);
+
+    const photos = (report.media || []).filter(
+        (file) => file.file_type === 'image' || file.url
+    );
+
+    const downloadPhoto = async (photo, index) => {
+    try {
+        const response = await fetch(photo.url);
+        if (!response.ok) throw new Error('Gagal mengambil foto');
+
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = `bukti-${report.id}-${index + 1}.jpg`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+
+        URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+        console.error('Gagal mengunduh foto:', error);
+        alert('Foto gagal diunduh. Silakan coba lagi.');
+    }
+};
+
+    return (
+        <div className="mt-6">
+            <p className="flex items-center gap-1.5 text-xs font-black text-slate-800">
+                <Camera className={cn(
+                    'h-4 w-4',
+                    urgent ? 'text-red-600' : 'text-brand'
+                )} />
+                Bukti Foto Warga
+            </p>
+
+            {photos.length > 0 ? (
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                    {photos.map((photo, index) => (
+                        <div
+    key={photo.path || photo.url || index}
+    className="overflow-hidden rounded-2xl border border-slate-200 bg-white"
+>
+    <button
+        type="button"
+        onClick={() => setSelectedImage(photo.url)}
+        className="block w-full text-left"
+    >
+        <img
+            src={photo.url}
+            alt={`Bukti laporan ${report.id} ${index + 1}`}
+            className="aspect-video w-full object-cover"
+        />
+        <p className="truncate p-2 text-xs font-semibold text-slate-500">
+            Foto {index + 1}
+        </p>
+    </button>
+
+    <div className="border-t border-slate-200 p-2">
+        <button
+    type="button"
+    onClick={() => downloadPhoto(photo, index)}
+    className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-black text-white"
+>
+    <Download className="h-3.5 w-3.5" />
+    Unduh Gambar
+</button>
+    </div>
+</div>
+                    ))}
+                    </div>
+            ) : (
+                <div className="mt-3 flex aspect-video flex-col items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-400">
+                    <Camera className="h-10 w-10" />
+                    <p className="mt-3 text-xs font-black">
+                        Tidak ada foto terlampir
+                    </p>
+                    <p className="mt-1 text-xs">#{report.id}</p>
+                </div>
+            )}
+
+            {selectedImage && (
+                <div
+                    className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4"
+                    onClick={() => setSelectedImage(null)}
+                >
+                    <button
+                        type="button"
+                        onClick={() => setSelectedImage(null)}
+                        className="absolute right-5 top-5 rounded-full bg-white px-4 py-2 text-sm font-bold text-slate-900"
+                    >
+                        Tutup
+                    </button>
+                    <img
+                        src={selectedImage}
+                        alt="Foto bukti laporan"
+                        className="max-h-[85vh] max-w-full rounded-xl object-contain"
+                        onClick={(event) => event.stopPropagation()}
+                    />
+                </div>
+            )}
         </div>
-        <div className="flex items-center justify-between gap-3 border-t border-slate-200 bg-white p-3">
-          <p className="truncate text-xs font-semibold text-slate-500">bukti-{report.id}.svg</p>
-          <button type="button" onClick={() => downloadEvidenceImage(report)} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-slate-900 px-3 py-2 text-xs font-black text-white hover:bg-slate-800"><Download className="h-3.5 w-3.5"/> Unduh Gambar</button>
-        </div>
-      </div>
-    </div>);
+    );
 }
 function RejectionDialog({ open, title, onClose, onConfirm }) {
     const [reason, setReason] = useState('Laporan tidak valid atau bukti yang diberikan tidak dapat diverifikasi.');
@@ -111,11 +197,24 @@ function RejectionDialog({ open, title, onClose, onConfirm }) {
     </div>);
 }
 function StatusPill({ status }) {
-    const config = statusConfig[status];
+    const normalizedStatus = {
+        submitted: 'pending',
+        in_review: 'in_progress',
+        resolved: 'handled',
+    }[status] || status;
+
+    const config = statusConfig[normalizedStatus] || statusConfig.pending;
     const Icon = config.icon;
-    return (<span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold', config.className)}>
-      <Icon className="h-3.5 w-3.5" aria-hidden/> {config.label}
-    </span>);
+
+    return (
+        <span className={cn(
+            'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold',
+            config.className
+        )}>
+            <Icon className="h-3.5 w-3.5" aria-hidden />
+            {config.label}
+        </span>
+    );
 }
 function MetricCard({ label, value, icon: Icon, tone }) {
     return (<div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -157,12 +256,48 @@ function ReportSummary({ report, open, onToggle }) {
     </>);
 }
 function EmergencyCard({ report, onApprove, onFinish, onSaveDraft }) {
+    const admin = useAdmin();
     const [message, setMessage] = useState(
-        report.emergencyDraft ?? bpbdTemplate(report)
+        report.emergencyDraft ?? bpbdTemplate(report, admin.areaLabel, admin.areaFull)
     );
     const [hotline, setHotline] = useState(
-        report.emergencyHotline ?? '112 — Jakarta Siaga'
+        report.emergencyHotline ?? ''
     );
+
+    useEffect(() => {
+    let cancelled = false;
+
+    async function loadContact() {
+        try {
+            const response = await fetch(
+                '/api/admin/emergency-contacts?agency_type=bpbd'
+            );
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Gagal mengambil kontak BPBD');
+            }
+
+            if (!cancelled) {
+                setHotline(result.contact?.phone_number ?? '');
+            }
+        } catch (error) {
+            console.error('Gagal memuat kontak BPBD:', error);
+
+            if (!cancelled) {
+                setHotline('');
+            }
+        }
+    }
+
+    loadContact();
+
+    return () => {
+        cancelled = true;
+    };
+}, [report.id]);
+
     const [copied, setCopied] = useState(false);
     const [proofFile, setProofFile] = useState(null);
     const [completionNotes, setCompletionNotes] = useState('');
@@ -173,14 +308,20 @@ function EmergencyCard({ report, onApprove, onFinish, onSaveDraft }) {
     const [draftSaved, setDraftSaved] = useState(false);
 
     const hasDraftChanges =
-        message !== (report.emergencyDraft ?? bpbdTemplate(report)) ||
-        hotline !== (report.emergencyHotline ?? '112 — Jakarta Siaga');
+        message !== (report.emergencyDraft ?? bpbdTemplate(report, admin.areaLabel, admin.areaFull)) ||
+        hotline !== (report.emergencyHotline ?? '');
 
-    function saveDraft() {
-        onSaveDraft(message, hotline);
-        setEditingDraft(false);
-        setDraftSaved(true);
+    async function saveDraft() {
+    const saved = await onSaveDraft(message, hotline);
+
+    if (!saved) {
+        setDraftSaved(false);
+        return;
     }
+
+    setEditingDraft(false);
+    setDraftSaved(true);
+}
 
     async function copyMessage() {
         await navigator.clipboard.writeText(`Hotline: ${hotline}\n\n${message}`);
@@ -194,7 +335,9 @@ function EmergencyCard({ report, onApprove, onFinish, onSaveDraft }) {
         setResolutionOpen(true);
     }
     const urgency = urgencyLevel(report);
-    const canFinish = Boolean(proofFile && completionNotes.trim());
+    const canAccessResolution = report.escalationStatus === 'in_progress';
+    const canFinish = canAccessResolution && Boolean(proofFile && completionNotes.trim());
+
     return (<>
       <article className="overflow-hidden rounded-2xl border border-red-200 bg-white shadow-sm">
         <div className="flex items-center justify-between gap-3 border-b border-red-100 bg-red-50 px-6 py-3">
@@ -220,7 +363,7 @@ function EmergencyCard({ report, onApprove, onFinish, onSaveDraft }) {
               </div>
               <div>
                 <dt className="text-xs font-bold text-slate-400">Wilayah sesi</dt>
-                <dd className="mt-1 text-xs font-black text-slate-800">{areaLabel}</dd>
+                <dd className="mt-1 text-xs font-black text-slate-800">{admin.areaLabel}</dd>
               </div>
               <div>
                 <dt className="text-xs font-bold text-slate-400">Waktu laporan</dt>
@@ -355,38 +498,103 @@ function EmergencyCard({ report, onApprove, onFinish, onSaveDraft }) {
               )}
             </div>
 
-            {(
               <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                <button type="button" onClick={() => setResolutionOpen((open) => !open)} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left" aria-expanded={resolutionOpen}>
-                  <span className="flex items-center gap-2 text-sm font-black text-slate-900"><CheckCircle2 className="h-4 w-4 text-brand"/> Penyelesaian Laporan</span>
-                  <span className="flex items-center gap-2">
-                    <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-black text-amber-700">Wajib lengkap</span>
-                    {resolutionOpen ? <ChevronUp className="h-4 w-4 text-slate-400"/> : <ChevronDown className="h-4 w-4 text-slate-400"/>}
-                  </span>
-                </button>
+  <button
+    type="button"
+    disabled={!canAccessResolution}
+    onClick={() => setResolutionOpen((open) => !open)}
+    className={cn(
+      'flex w-full items-center justify-between gap-3 px-4 py-3 text-left',
+      canAccessResolution
+        ? 'hover:bg-slate-50'
+        : 'cursor-not-allowed opacity-60'
+    )}
+    aria-expanded={canAccessResolution && resolutionOpen}
+  >
+    <span className="flex items-center gap-2 text-sm font-black text-slate-900">
+      <CheckCircle2 className="h-4 w-4 text-brand" />
+      Penyelesaian Laporan
+    </span>
+    <span className="flex items-center gap-2">
+      <span className={cn(
+        'rounded-full px-2 py-1 text-xs font-black',
+        canAccessResolution
+          ? 'bg-amber-100 text-amber-700'
+          : 'bg-slate-100 text-slate-500'
+      )}>
+        {canAccessResolution ? 'Wajib lengkap' : 'Menunggu penanganan'}
+      </span>
+      {canAccessResolution && (
+        resolutionOpen
+          ? <ChevronUp className="h-4 w-4 text-slate-400" />
+          : <ChevronDown className="h-4 w-4 text-slate-400" />
+      )}
+    </span>
+  </button>
 
-                {resolutionOpen && (
-                  <div className="border-t border-slate-100 p-4">
-                    <div className="grid gap-4">
-                      <label className="block text-xs font-black text-slate-700">Bukti foto penyelesaian
-                        <span className="mt-1.5 flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3 transition-colors hover:border-brand-light hover:bg-brand-xlight">
-                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-slate-500 shadow-sm"><Upload className="h-4 w-4"/></span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-xs font-bold text-slate-700">{proofFile?.name || 'Pilih gambar bukti'}</span>
-                            <span className="mt-0.5 block text-xs font-normal text-slate-400">JPG, PNG, atau WEBP</span>
-                          </span>
-                          <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setProofFile(event.target.files?.[0] || null)} className="sr-only"/>
-                        </span>
-                      </label>
-                      <label className="block text-xs font-black text-slate-700">Catatan penyelesaian
-                        <textarea value={completionNotes} onChange={(event) => setCompletionNotes(event.target.value)} rows={3} placeholder="Jelaskan tindakan yang telah dilakukan dan kondisi akhir lokasi." className="mt-1.5 w-full resize-none rounded-xl border border-slate-200 bg-white p-3 text-sm leading-relaxed text-slate-700 outline-none placeholder:text-slate-400 focus:border-brand focus:ring-2 focus:ring-brand/10"/>
-                      </label>
-                    </div>
-                    <button type="button" disabled={!canFinish} onClick={() => onFinish(completionNotes.trim(), { completionNotes: completionNotes.trim(), proofName: proofFile.name, resolutionPhoto: URL.createObjectURL(proofFile) })} className="mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand px-4 py-3 text-xs font-black text-white hover:bg-brand-dark disabled:cursor-not-allowed disabled:bg-slate-300"><Check className="h-4 w-4"/> Tandai Selesai </button>
-                  </div>
-                )}
-              </div>
-            )}
+  {!canAccessResolution && (
+    <p className="border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
+      Form penyelesaian akan tersedia setelah draft eskalasi ditangani.
+    </p>
+  )}
+
+  {canAccessResolution && resolutionOpen && (
+    <div className="border-t border-slate-100 p-4">
+      <div className="grid gap-4">
+        <label className="block text-xs font-black text-slate-700">
+          Bukti foto penyelesaian
+          <span className="mt-1.5 flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-slate-500 shadow-sm">
+              <Upload className="h-4 w-4" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-xs font-bold text-slate-700">
+                {proofFile?.name || 'Pilih gambar bukti'}
+              </span>
+              <span className="mt-0.5 block text-xs font-normal text-slate-400">
+                JPG, PNG, atau WEBP
+              </span>
+            </span>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(event) => setProofFile(event.target.files?.[0] || null)}
+              className="sr-only"
+            />
+          </span>
+        </label>
+
+        <label className="block text-xs font-black text-slate-700">
+          Catatan penyelesaian
+          <textarea
+            value={completionNotes}
+            onChange={(event) => setCompletionNotes(event.target.value)}
+            rows={3}
+            placeholder="Jelaskan tindakan yang telah dilakukan dan kondisi akhir lokasi."
+            className="mt-1.5 w-full resize-none rounded-xl border border-slate-200 bg-white p-3 text-sm leading-relaxed text-slate-700 outline-none focus:border-brand focus:ring-2 focus:ring-brand/10"
+          />
+        </label>
+      </div>
+
+      <button
+        type="button"
+        disabled={!canFinish}
+        onClick={() => onFinish(completionNotes.trim(), {
+          completionNotes: completionNotes.trim(),
+          proofName: proofFile?.name || null,
+          resolutionPhoto: proofFile
+            ? URL.createObjectURL(proofFile)
+            : null,
+          proofFile: proofFile || null,
+        })}
+        className="mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand px-4 py-3 text-xs font-black text-white hover:bg-brand-dark disabled:cursor-not-allowed disabled:bg-slate-300"
+      >
+        <Check className="h-4 w-4" />
+        Tandai Selesai
+      </button>
+    </div>
+  )}
+</div>
           </section>
         </div>
       </article>
@@ -403,7 +611,7 @@ function categoryCluster(report) {
 function clusterKey(report) {
     return `${regionalCluster(report).toLowerCase()}|${categoryCluster(report).toLowerCase()}`;
 }
-function CommunityCard({ reports, onApprove, onReject, overridden, recordTimelineActivity, startCommunityHandling }) {
+function CommunityCard({ reports, overridden, recordTimelineActivity, startCommunityHandling }) {
     const report = reports[0];
     const aksiState = useAksiState();
     const sourceId = reports.map((item) => item.id).join('-');
@@ -520,8 +728,6 @@ function CommunityCard({ reports, onApprove, onReject, overridden, recordTimelin
         setPublishedId('simulation');
         return;
     }
-
-    onApprove();
 
     const id = publishCommunityAksi({  
         sourceId,
@@ -792,13 +998,13 @@ setPublishedId(id);
 }
 
 export default function AIAssistant() {
+    const { areaLabel, areaFull } = useAdmin();
     const {
     reports,
     approveReport,
     saveEmergencyDraft,
     finalizeReport,
     acceptRecommendation,
-    rejectRecommendation,
     recordTimelineActivity,
     startCommunityHandling,
 } = useReportContext();
@@ -933,12 +1139,6 @@ const readyClusters = maturedClusters;
             <CommunityCard
                 key={cluster[0].id}
                 reports={cluster}
-                onApprove={() =>
-                    cluster.forEach((item) => acceptRecommendation(item.id))
-                }
-                onReject={(reason) =>
-                    cluster.forEach((item) => rejectRecommendation(item.id, reason))
-                }
                 recordTimelineActivity={recordTimelineActivity}
                 startCommunityHandling={startCommunityHandling}
             />

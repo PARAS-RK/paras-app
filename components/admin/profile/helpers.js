@@ -1,10 +1,11 @@
 export function initials(name) {
-    return name.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase();
-}
-  
-export function maskPhone(phone = "") {
-    const digits = phone.replace(/\D/g, "");
-    return `${digits.slice(0, 4)}****${digits.slice(-3)}`;
+  return name
+    .replace(/^(Ibu|Bapak|Mbak)\s+/, "")
+    .split(" ")
+    .map((part) => part[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
 }
 
 export function passwordStrength(password) {

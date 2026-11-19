@@ -1,49 +1,56 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 import { useAdmin } from "@/context/AdminContext";
-import { updateProfile } from "@/lib/profile/actions";
+import { updateMyProfile } from "@/lib/profile/actions";
+import { displayPhone } from "@/lib/profile/format";
 
 export function useProfileForm() {
   const admin = useAdmin();
 
-  const profile = {
-    name: admin.name,
-    phone: admin.phone ?? "",
-    rt: admin.rt,
-    rw: admin.rw,
-    area: admin.areaFull,
-    role: "Ketua PKK",
-    joined: admin.joined,
-  };
+  const profile = useMemo(
+    () => ({
+      name: admin.name,
+      phone: displayPhone(admin.phone),
+      rt: admin.rt,
+      rw: admin.rw,
+      area: admin.areaFull,
+      role: "Ketua PKK",
+      joined: admin.joined,
+    }),
+    [admin]
+  );
 
   const [draft, setDraft] = useState(profile);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
   const [saving, startTransition] = useTransition();
 
-  const startEdit = () => {
+  const startEdit = useCallback(() => {
     setDraft(profile);
     setError("");
+    setSaved(false);
     setEditing(true);
-  };
+  }, [profile]);
 
-  const cancelEdit = () => {
+  const cancelEdit = useCallback(() => {
     setError("");
     setEditing(false);
-  };
+  }, []);
 
-  const save = () => {
+  const save = useCallback(() => {
     setError("");
     startTransition(async () => {
-      const result = await updateProfile(draft);
+      const result = await updateMyProfile(draft);
       if (!result.ok) {
         setError(result.error);
         return;
       }
       setEditing(false);
+      setSaved(true);
     });
-  };
+  }, [draft]);
 
-  return { profile, draft, setDraft, editing, saving, error, startEdit, cancelEdit, save };
+  return { profile, draft, setDraft, editing, saving, error, saved, startEdit, cancelEdit, save };
 }

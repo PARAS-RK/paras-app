@@ -1,14 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
 import { X } from "lucide-react";
+import { useDialog } from "@/hooks/useDialog";
 
 export default function SecurityDialog({ title, onClose, children }) {
-  useEffect(() => {
-    const onKey = (event) => event.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const ref = useDialog(onClose);
 
   return (
     <div
@@ -16,6 +12,7 @@ export default function SecurityDialog({ title, onClose, children }) {
       onMouseDown={onClose}
     >
       <div
+        ref={ref}
         role="dialog"
         aria-modal="true"
         aria-labelledby="security-dialog-title"

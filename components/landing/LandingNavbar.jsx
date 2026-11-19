@@ -1,6 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import logo from '../../public/paras_logo_lama.svg';
+import logo from '@/public/logo.svg';
 // import globalStyles from '../app/globals.css';
 
 export default function LandingNavbar() {
@@ -10,6 +10,7 @@ export default function LandingNavbar() {
         <Link href="/#beranda" className="shrink-0" aria-label="PARAS">
           <Image src={logo} alt="PARAS" priority style={{ width: 'auto' }} className="h-9 object-contain lg:h-10" />
         </Link>
+        <p className="ml-2 text-xl font-bold text-gray-800">Paras</p>
       </div>
     </header>
   );

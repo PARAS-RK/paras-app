@@ -1,43 +1,67 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { Mail } from "lucide-react";
+import { useAdmin } from "@/context/AdminContext";
+import { requestEmailChange, verifyEmailChange } from "@/lib/profile/actions";
 import SecurityDialog from "./SecurityDialog";
 import PasswordInput from "./PasswordInput";
 
-const EMPTY_CODE = ["", "", "", "", "", ""];
+const codeInput =
+  "mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-center text-lg font-black tracking-[0.4em] text-slate-900 outline-none focus:border-brand focus:ring-2 focus:ring-brand/10";
 
-export default function ChangeEmailModal({ currentEmail, onClose, onSuccess }) {
+export default function ChangeEmailModal({ onClose, onSuccess }) {
+  const { email: currentEmail } = useAdmin();
   const [step, setStep] = useState(1);
   const [newEmail, setNewEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [code, setCode] = useState(EMPTY_CODE);
-  const [countdown, setCountdown] = useState(60);
+  const [codeCurrent, setCodeCurrent] = useState("");
+  const [codeNew, setCodeNew] = useState("");
+  const [countdown, setCountdown] = useState(0);
+  const [error, setError] = useState("");
+  const [pending, startTransition] = useTransition();
 
   useEffect(() => {
-    if (step !== 2 || countdown <= 0) return;
-    const timer = window.setInterval(() => setCountdown((value) => value - 1), 1000);
-    return () => window.clearInterval(timer);
-  }, [step, countdown]);
+    if (countdown <= 0) return;
+    const timer = setTimeout(() => setCountdown((value) => value - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [countdown]);
 
-  function updateCode(index, value) {
-    const next = [...code];
-    next[index] = value.replace(/\D/g, "").slice(-1);
-    setCode(next);
-    if (next[index] && index < 5) document.getElementById(`email-code-${index + 1}`)?.focus();
+  function send(event) {
+    event?.preventDefault();
+    if (pending || !newEmail || !password) return;
+    setError("");
+    startTransition(async () => {
+      const result = await requestEmailChange(newEmail, password);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setStep(2);
+      setCountdown(60);
+    });
   }
 
+  function verify() {
+    if (pending) return;
+    setError("");
+    startTransition(async () => {
+      const result = await verifyEmailChange(newEmail, codeNew, codeCurrent);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      onSuccess();
+    });
+  }
+
+  const onlyDigits = (value) => value.replace(/\D/g, "").slice(0, 6);
+
   return (
-    <SecurityDialog title={step === 1 ? "Ubah Email" : "Verifikasi Email Baru"} onClose={onClose}>
+    <SecurityDialog title={step === 1 ? "Ubah Email" : "Verifikasi Email"} onClose={onClose}>
       {step === 1 ? (
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (newEmail && password) setStep(2);
-          }}
-          className="space-y-4 p-5"
-        >
+        <form onSubmit={send} className="space-y-4 p-5">
           <label htmlFor="current-email" className="block text-xs font-black text-slate-700">
             Email saat ini
             <input
@@ -75,6 +99,12 @@ export default function ChangeEmailModal({ currentEmail, onClose, onSuccess }) {
             autoComplete="current-password"
           />
 
+          {error && (
+            <p className="rounded-xl bg-red-50 p-3 text-xs font-bold text-red-700" role="alert">
+              {error}
+            </p>
+          )}
+
           <div className="grid grid-cols-2 gap-2 pt-1">
             <button
               type="button"
@@ -85,66 +115,76 @@ export default function ChangeEmailModal({ currentEmail, onClose, onSuccess }) {
             </button>
             <button
               type="submit"
-              disabled={!newEmail || !password}
+              disabled={!newEmail || !password || pending}
               className="rounded-xl bg-brand px-3 py-3 text-sm font-black text-white hover:bg-brand-dark disabled:cursor-not-allowed disabled:bg-slate-300"
             >
-              Kirim Kode Verifikasi
+              {pending ? "Mengirim..." : "Kirim Kode"}
             </button>
           </div>
         </form>
       ) : (
-        <div className="p-5">
+        <div className="space-y-4 p-5">
           <p className="text-sm leading-relaxed text-slate-600">
-            Kami telah mengirim kode 6 digit ke {newEmail}.
+            Kami mengirim kode 6 digit ke email lama (<strong>{currentEmail}</strong>) dan email baru (
+            <strong>{newEmail}</strong>). Masukkan keduanya.
           </p>
-          <div className="mt-5 grid grid-cols-6 gap-2">
-            {code.map((digit, index) => (
-              <input
-                key={index}
-                id={`email-code-${index}`}
-                type="text"
-                inputMode="numeric"
-                maxLength={1}
-                value={digit}
-                onChange={(event) => updateCode(index, event.target.value)}
-                aria-label={`Digit ${index + 1}`}
-                className="h-12 min-w-0 rounded-xl border border-slate-200 bg-slate-50 text-center text-lg font-black text-slate-900 outline-none focus:border-brand focus:ring-2 focus:ring-brand/10"
-              />
-            ))}
-          </div>
 
-          <div className="mt-4 text-center">
+          <label htmlFor="code-current" className="block text-xs font-black text-slate-700">
+            Kode dari email lama
+            <input
+              id="code-current"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              value={codeCurrent}
+              onChange={(event) => setCodeCurrent(onlyDigits(event.target.value))}
+              className={codeInput}
+            />
+          </label>
+          <label htmlFor="code-new" className="block text-xs font-black text-slate-700">
+            Kode dari email baru
+            <input
+              id="code-new"
+              inputMode="numeric"
+              value={codeNew}
+              onChange={(event) => setCodeNew(onlyDigits(event.target.value))}
+              className={codeInput}
+            />
+          </label>
+
+          <div className="text-center">
             {countdown > 0 ? (
               <p className="text-xs font-semibold text-slate-500">Kirim ulang dalam {countdown} detik</p>
             ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setCountdown(60);
-                  setCode(EMPTY_CODE);
-                }}
-                className="text-xs font-black text-brand hover:underline"
-              >
+              <button type="button" onClick={send} disabled={pending} className="text-xs font-black text-brand hover:underline">
                 Kirim ulang kode
               </button>
             )}
           </div>
 
-          <div className="mt-5 grid grid-cols-2 gap-2">
+          {error && (
+            <p className="rounded-xl bg-red-50 p-3 text-xs font-bold text-red-700" role="alert">
+              {error}
+            </p>
+          )}
+
+          <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
-              onClick={() => setStep(1)}
+              onClick={() => {
+                setStep(1);
+                setError("");
+              }}
               className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-50"
             >
               Kembali
             </button>
             <button
               type="button"
-              disabled={code.join("").length !== 6}
-              onClick={() => onSuccess(newEmail)}
+              disabled={codeCurrent.length !== 6 || codeNew.length !== 6 || pending}
+              onClick={verify}
               className="rounded-xl bg-brand px-4 py-3 text-sm font-black text-white hover:bg-brand-dark disabled:cursor-not-allowed disabled:bg-slate-300"
             >
-              Verifikasi
+              {pending ? "Memverifikasi..." : "Verifikasi"}
             </button>
           </div>
         </div>
