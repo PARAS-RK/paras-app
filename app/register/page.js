@@ -3,8 +3,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import Script from 'next/script';
 import { AlertTriangle, ArrowRight, CheckCircle2, Clock, Eye, EyeOff, LoaderCircle, Lock, Mail, MessageCircle, Phone, User, XCircle } from 'lucide-react';
 
 import { contactFor, formatRemaining } from '../../lib/memberStore';
@@ -15,17 +13,6 @@ import RegionPicker from '@/components/RegionPicker';
 
 const PKK_TABLE = 'pkk_units';
 const REGION_TABLE = 'regions';
-// Helper to generate secure nonce for Google ID Token Sign-In
-const generateNonce = async () => {
-  const nonce = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))));
-  const encoder = new TextEncoder();
-  const encodedNonce = encoder.encode(nonce);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', encodedNonce);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const hashedNonce = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-
-  return [nonce, hashedNonce];
-};
 
 // Ubah 0815xxxx / +62815xxxx -> 62815xxxx untuk tautan wa.me
 function toWhatsAppNumber(phone) {
@@ -69,7 +56,6 @@ async function fetchRegistration(supabase) {
 
 export default function Register() {
   const supabase = useMemo(() => createClient(), []);
-  const router = useRouter();
 
   const [step, setStep] = useState('form');
   const [accountType, setAccountType] = useState('general');
@@ -169,60 +155,6 @@ export default function Register() {
       cancelled = true;
     };
   }, [needsPkkCheck, pkkKey, form.subdistrictCode, supabase]);
-
-  // Initialize Google One Tap
-  const initializeGoogleOneTap = async () => {
-    try {
-      const [nonce, hashedNonce] = await generateNonce();
-
-      // Sudah punya sesi yang valid? Cukup lewati One Tap. JANGAN me-redirect ke '/':
-      // status akun (menunggu persetujuan / sudah aktif) ditangani efek pemulihan sesi di atas.
-      // getUser() memvalidasi ke server, jadi sesi sisa dari akun yang sudah dihapus tidak dihitung.
-      const {
-        data: { user: existingUser },
-      } = await supabase.auth.getUser();
-      if (existingUser) return;
-
-      const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-      if (typeof window !== 'undefined' && window.google?.accounts?.id && clientId) {
-        window.google.accounts.id.initialize({
-          client_id: clientId,
-          callback: async (response) => {
-            try {
-              const { error: signInError } = await supabase.auth.signInWithIdToken({
-                provider: 'google',
-                token: response.credential,
-                nonce,
-              });
-
-              if (signInError) throw signInError;
-              router.push('/home');
-            } catch (err) {
-              console.error('Error logging in with Google One Tap', err);
-            }
-          },
-          nonce: hashedNonce,
-          use_fedcm_for_prompt: true,
-        });
-      }
-    } catch (err) {
-      console.error('Failed to initialize Google Auth:', err);
-    }
-  };
-
-  const handleGoogleSignIn = async () => {
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
-      if (error) throw error;
-    } catch (err) {
-      console.error('Error logging in with Google:', err.message);
-    }
-  };
 
   // Dipanggil RegionPicker setiap pilihan wilayah berubah
   function handleRegionChange(patch) {
@@ -462,7 +394,6 @@ export default function Register() {
 
   return (
     <>
-      <Script onReady={initializeGoogleOneTap} src="https://accounts.google.com/gsi/client" />
       <div className="lg:bg-muted/30 lg:flex lg:min-h-[calc(100vh-64px)] lg:items-start lg:justify-center lg:px-6 lg:py-12">
         <div className="mx-auto w-full max-w-lg lg:overflow-hidden lg:rounded-3xl lg:bg-white lg:shadow-lg">
           <div className="bg-gradient-to-b from-brand-xlight to-white flex flex-col items-center px-6 pt-8 pb-6 text-center">
@@ -472,27 +403,6 @@ export default function Register() {
           </div>
 
           <div className="bg-white px-6 pb-10">
-            {/* Google OAuth / One Tap Trigger */}
-            <button
-              type="button"
-              onClick={handleGoogleSignIn}
-              className="border-border text-foreground hover:bg-muted mb-6 flex w-full items-center justify-center gap-3 rounded-2xl border bg-white py-3.5 text-sm font-semibold shadow-sm transition-colors"
-            >
-              <svg className="h-5 w-5" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-              </svg>
-              Daftar dengan Google
-            </button>
-
-            <div className="mb-5 flex items-center gap-3">
-              <div className="bg-border h-px flex-1" />
-              <span className="text-muted-foreground text-xs">atau isi formulir</span>
-              <div className="bg-border h-px flex-1" />
-            </div>
-
             {/* Account type */}
             <div className="mb-5">
               <p className="text-foreground mb-2 text-xs font-bold uppercase tracking-wider">Kategori Akun</p>
