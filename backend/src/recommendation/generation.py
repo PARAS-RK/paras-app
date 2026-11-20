@@ -8,7 +8,7 @@ from .config import GEMINI_API_KEY, GEMINI_MODEL
 GEMINI_ENDPOINT = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 )
-FALLBACK_MODELS = ["gemini-3.6-flash", "gemini-3.5-flash"]
+FALLBACK_MODELS = ["Gemini 3.1 Flash Lite", "Gemini 2.5 Flash Lite", "Gemini 3.5 Flash Lite", "Gemini 3.8 Flash"]
 
 
 def _candidate_models() -> list[str]:

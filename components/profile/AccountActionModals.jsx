@@ -34,7 +34,6 @@ function ModalShell({ open, busy, onClose, labelledBy, children }) {
   );
 }
 
-/* ---------- Konfirmasi keluar ---------- */
 export function LogoutConfirmModal({ open, loading, onClose, onConfirm }) {
   return (
     <ModalShell open={open} busy={loading} onClose={onClose} labelledBy="logout-title">
@@ -63,11 +62,9 @@ export function LogoutConfirmModal({ open, loading, onClose, onConfirm }) {
   );
 }
 
-/* ---------- Konfirmasi hapus akun (ketik ulang email) ---------- */
 export function DeleteAccountModal({ open, loading, email, error, onClose, onConfirm }) {
   const [value, setValue] = useState('');
 
-  // Akun tanpa email (mis. login nomor HP): konfirmasi memakai kata HAPUS
   const target = email || 'HAPUS';
   const matches = value.trim().toLowerCase() === target.toLowerCase();
 
@@ -147,7 +144,6 @@ export function DeleteAccountModal({ open, loading, email, error, onClose, onCon
   );
 }
 
-/* ---------- Modal status (berhasil / gagal), dipakai mis. di Ubah Kata Sandi ---------- */
 export function StatusModal({ open, type = 'success', title, message, buttonLabel = 'Tutup', onClose }) {
   const isSuccess = type === 'success';
   const Icon = isSuccess ? CheckCircle2 : XCircle;

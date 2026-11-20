@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Mail, Lock, Phone, Loader2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { createClient } from '../../lib/supabase/client';
+import { loginWithEmail, loginWithPhone } from './actions';
 import logo from '@/public/logo.svg';
 
 export default function Login() {
@@ -18,7 +19,13 @@ export default function Login() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [authError, setAuthError] = useState('');
 
-  // Fungsi Login dengan Google OAuth Supabase
+  useEffect(() => {
+    const err = new URLSearchParams(window.location.search).get('error');
+    if (err === 'google_not_registered') {
+      setAuthError('Akun Google ini belum terdaftar. Silakan daftar dengan email terlebih dahulu.');
+    }
+  }, []);
+
   const handleGoogleLogin = async () => {
     try {
       setGoogleLoading(true);
@@ -28,8 +35,7 @@ export default function Login() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          // Arahkan kembali ke halaman home / dashboard setelah sukses login google
-          redirectTo: `${window.location.origin}/home`,
+          redirectTo: `${window.location.origin}/auth/callback?next=/home`,
         },
       });
 
@@ -58,20 +64,15 @@ export default function Login() {
     setAuthError('');
 
     try {
-      const supabase = createClient();
+      const result = method === 'phone' ? await loginWithPhone({ phone: form.identifier, password: form.password }) : await loginWithEmail({ email: form.identifier, password: form.password });
 
-      // Proses login menggunakan Email / Password Supabase Auth
-      const { error } = await supabase.auth.signInWithPassword({
-        email: form.identifier,
-        password: form.password,
-      });
-
-      if (error) throw error;
+      if (result?.error) throw new Error(result.error);
 
       localStorage.setItem('paras-authenticated', 'true');
       router.push('/home');
+      router.refresh();
     } catch (err) {
-      setAuthError(err.message || 'Email atau kata sandi salah.');
+      setAuthError(err.message || 'Gagal masuk. Coba lagi.');
     } finally {
       setLoading(false);
     }
