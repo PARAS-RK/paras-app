@@ -15,7 +15,6 @@ export default function ForgotPassword() {
   const [sent, setSent] = useState(false);
   const [cooldown, setCooldown] = useState(0);
 
-  // /auth/confirm mengirim kembali ke sini (?error=link) jika tautan tidak valid / kedaluwarsa
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get('error') === 'link') {
       setError('Tautan tidak valid atau sudah kedaluwarsa. Silakan minta tautan baru.');
