@@ -10,9 +10,11 @@ export async function requestPasswordReset(email) {
     };
   }
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || (process.env.NODE_ENV !== 'production' ? 'http://localhost:3000' : null);
+  const siteUrl = process.env.SITE_URL;
 
   if (!siteUrl) {
+    console.error('SITE_URL belum dikonfigurasi');
+
     return {
       success: false,
       error: 'Konfigurasi URL aplikasi belum tersedia.',
@@ -21,11 +23,11 @@ export async function requestPasswordReset(email) {
 
   const redirectTo = new URL('/auth/confirm', siteUrl).toString();
 
+  console.log('[PASSWORD RESET] Redirect:', redirectTo);
+
   const supabase = await createClient();
 
-  const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-    redirectTo,
-  });
+  const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
 
   if (error) {
     const rateLimited = /rate limit|seconds|too many/i.test(error.message);
