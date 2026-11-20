@@ -8,7 +8,7 @@ const HOME_PATH = '/home';
 const MAINTENANCE_PATH = '/maintenance';
 
 const PROTECTED_PREFIXES = ['/home', '/aksi', '/info', '/lapor', '/pantau', '/profile', '/store', '/api/lapor', '/api/pantau', '/api/profile'];
-const LEADER_PREFIXES = ['/admin'];
+const LEADER_PREFIXES = ['/admin', '/api/admin'];
 const PUBLIC_EXCEPTIONS = ['/admin/login', '/pkk/community'];
 // ---------------------------------------------------------------------
 
