@@ -4,69 +4,62 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, ArrowRight, Award, ChevronRight, CloudRain, CloudLightning, FileText, Leaf, MapPin, MessageCircle, Loader2 } from 'lucide-react';
-import { useReportContext } from '../../../context/ReportContext';
-import { createClient } from '../../../lib/supabase/client';
 
 import { Card, CardContent } from '../../../components/ui/card';
 import { Progress } from '../../../components/ui/progress';
 
 export default function Home() {
   const router = useRouter();
-  const { reports } = useReportContext();
   const [loading, setLoading] = useState(true);
-  const [profileData, setProfileData] = useState({
-    displayName: 'Warga PARAS',
-    areaFull: 'Atur lokasi domisili',
-  });
-  const [homeStats, setHomeStats] = useState({
-    points: 0,
-    streak: 0,
-    completedCount: 0,
-    activeAction: null,
-  });
+  const [data, setData] = useState(null);
 
-  // Fetch profil asli dan data statistik dari Supabase saat load awal
-useEffect(() => {
-  const controller = new AbortController();
+  // Ambil profil dan statistik aktivitas dari /api/home
+  useEffect(() => {
+    const controller = new AbortController();
 
-  const fetchHomeData = async () => {
-    try {
-      const res = await fetch('/api/home', {
-        cache: 'no-store',
-        signal: controller.signal,
-      });
+    const fetchHomeData = async () => {
+      try {
+        const res = await fetch('/api/home', {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
 
-      if (res.status === 401) {
-        router.push('/login');
-        return;
+        if (res.status === 401) {
+          router.push('/login');
+          return;
+        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        setData(await res.json());
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          console.error('Gagal memuat data beranda:', err);
+          setData(null);
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
       }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    };
 
-      const data = await res.json();
-      setProfileData({
-        displayName: data.displayName,
-        areaFull: data.areaFull || 'Wilayah belum diatur',
-      });
-    } catch (err) {
-      if (err.name !== 'AbortError') {
-        console.error('Gagal memuat data beranda:', err);
-        setProfileData({ displayName: 'Warga PARAS', areaFull: 'Wilayah belum diatur' });
-      }
-    } finally {
-      if (!controller.signal.aborted) setLoading(false);
-    }
+    fetchHomeData();
+    return () => controller.abort();
+  }, [router]);
+
+  const profileData = {
+    displayName: data?.displayName ?? 'Warga PARAS',
+    areaFull: data?.areaFull || 'Wilayah belum diatur',
   };
 
-  fetchHomeData();
-  return () => controller.abort();
-}, [router]);
+  const s = data?.stats ?? {
+    points: 0,
+    completedCount: 0,
+    activeAction: null,
+    reportsTotal: 0,
+    reportsInProgress: 0,
+  };
 
-  // Hitung laporan milik user yang sedang diproses
-  const mine = reports.filter((r) => r.reporter === profileData.displayName);
-  const inProgressReports = mine.filter((r) => r.status === 'pending' || r.status === 'in_progress').length;
-
-  const current = homeStats.activeAction;
-  const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+  const current = s.activeAction;
+  const pct = (a, b) => (b ? Math.min(100, Math.round((a / b) * 100)) : 0);
 
   const tiles = [
     current
@@ -85,26 +78,27 @@ useEffect(() => {
           icon: Leaf,
           tone: 'text-[#159038] bg-[#159038]/10',
           label: 'Aksi Komunitas',
-          value: `${homeStats.completedCount}`,
+          value: `${s.completedCount}`,
           sub: 'Aksi selesai diikuti',
         },
     {
-      to: '/reports',
+      to: '/lapor',
       icon: FileText,
       tone: 'text-[#E6008A] bg-[#E6008A]/10',
       label: 'Laporan Saya',
-      value: `${mine.length}`,
-      sub: `${inProgressReports} sedang diproses`,
+      value: `${s.reportsTotal}`,
+      sub: `${s.reportsInProgress} sedang diproses`,
     },
     {
       to: '/aksi?seg=peringkat',
       icon: Award,
       tone: 'text-amber-600 bg-amber-100',
       label: 'Poin Saya',
-      value: `${homeStats.points}`,
-      sub: `${homeStats.streak} minggu beruntun`,
+      value: `${s.points}`,
+      sub: 'Total poin aksi',
     },
     {
+      // Statis sementara
       to: '/info',
       icon: CloudRain,
       tone: 'text-sky-600 bg-sky-100',
@@ -141,7 +135,7 @@ useEffect(() => {
 
       {/* 2. Main Content Container */}
       <div className="mx-auto w-full max-w-5xl space-y-4 px-4 py-6 lg:space-y-6 lg:px-10 lg:py-8 -mt-6 relative z-10">
-        {/* Banner Cuaca (Peringatan Dini) */}
+        {/* Banner Cuaca (Peringatan Dini) - statis sementara */}
         <Link href="/info" className="block group">
           <Card className="border-orange-200 bg-orange-50/80 backdrop-blur-sm shadow-sm transition-all hover:shadow-md hover:bg-orange-100/80 rounded-lg">
             <CardContent className="flex items-center gap-4 p-4 lg:p-5">
@@ -161,7 +155,7 @@ useEffect(() => {
         </Link>
 
         {/* Tombol Aksi Utama (Buat Laporan) - Magenta Pink */}
-        <Link href="/chatbot" className="block group">
+        <Link href="/lapor" className="block group">
           <Card className="border-none bg-[#E6008A] text-white shadow-lg shadow-pink-500/20 transition-transform hover:-translate-y-0.5 rounded-lg">
             <CardContent className="flex items-center gap-4 p-4 lg:p-5">
               <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm">
@@ -178,29 +172,35 @@ useEffect(() => {
 
         {/* Grid Ringkasan (Shadcn Cards) */}
         <nav aria-label="Ringkasan Aktivitas" className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 lg:gap-5 pt-2">
-          {tiles.map((t) => (
-            <Link key={t.label} href={t.to} className="block group h-full">
-              <Card className="h-full transition-all hover:shadow-md border-gray-200/60 hover:border-gray-300 rounded-lg">
-                <CardContent className="flex flex-col p-5">
-                  <div className="flex items-center justify-between">
-                    <ChevronRight className="h-4 w-4 text-gray-400 transition-transform group-hover:translate-x-1" aria-hidden />
-                  </div>
-
-                  <div className="mt-4 flex flex-col gap-1">
-                    <p className="text-sm font-semibold text-gray-500">{t.label}</p>
-                    <p className="text-3xl font-black tracking-tight text-gray-900">{t.value}</p>
-                    <p className="truncate text-xs font-medium text-gray-500 mt-1">{t.sub}</p>
-                  </div>
-
-                  {'bar' in t && t.bar !== undefined && (
-                    <div className="mt-4">
-                      <Progress value={t.bar} className="h-2 bg-gray-100" indicatorClassName={t.barColor} />
+          {tiles.map((t) => {
+            const Icon = t.icon;
+            return (
+              <Link key={t.label} href={t.to} className="block group h-full">
+                <Card className="h-full transition-all hover:shadow-md border-gray-200/60 hover:border-gray-300 rounded-lg">
+                  <CardContent className="flex flex-col p-5">
+                    <div className="flex items-center justify-between">
+                      <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${t.tone}`}>
+                        <Icon className="h-5 w-5" aria-hidden />
+                      </span>
+                      <ChevronRight className="h-4 w-4 text-gray-400 transition-transform group-hover:translate-x-1" aria-hidden />
                     </div>
-                  )}
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
+
+                    <div className="mt-4 flex flex-col gap-1">
+                      <p className="text-sm font-semibold text-gray-500">{t.label}</p>
+                      <p className="text-3xl font-black tracking-tight text-gray-900">{t.value}</p>
+                      <p className="truncate text-xs font-medium text-gray-500 mt-1">{t.sub}</p>
+                    </div>
+
+                    {'bar' in t && t.bar !== undefined && (
+                      <div className="mt-4">
+                        <Progress value={t.bar} className="h-2 bg-gray-100" indicatorClassName={t.barColor} />
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </Link>
+            );
+          })}
         </nav>
       </div>
     </div>
