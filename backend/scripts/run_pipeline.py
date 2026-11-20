@@ -1,4 +1,5 @@
 import argparse
+import inspect
 import sys
 from pathlib import Path
 
@@ -38,23 +39,46 @@ def load_knowledge_base_records() -> list[dict]:
         if not isinstance(item, dict):
             continue
 
-        title = (
+        title = str(
             item.get("title")
+            or item.get("judul")
             or item.get("kegiatan")
             or item.get("name")
             or item.get("topic")
             or item.get("category")
+            or item.get("kategori")
             or f"Aksi Komunitas #{idx + 1}"
+        ).strip()
+
+        steps = (
+            item.get("steps")
+            or item.get("langkah")
+            or item.get("tahapan")
+            or item.get("actions")
+            or []
         )
-        steps = item.get("steps") or item.get("langkah") or item.get("actions") or []
         if isinstance(steps, list):
             steps_text = "\n".join(f"- {str(s).strip()}" for s in steps if str(s).strip())
         else:
             steps_text = str(steps or "").strip()
 
-        responsible = str(item.get("responsible") or item.get("penanggung_jawab") or "").strip()
-        indicator = str(item.get("indicator") or item.get("indikator") or "").strip()
-        description = str(item.get("description") or item.get("deskripsi") or "").strip()
+        responsible = str(
+            item.get("responsible")
+            or item.get("penanggung_jawab")
+            or item.get("sasaran")
+            or ""
+        ).strip()
+        indicator = str(
+            item.get("indicator")
+            or item.get("indikator")
+            or ""
+        ).strip()
+        description = str(
+            item.get("description")
+            or item.get("deskripsi")
+            or item.get("ringkasan")
+            or ""
+        ).strip()
 
         parts = [f"Kegiatan: {title}"]
         if description:
@@ -92,31 +116,36 @@ def build_chunks(raw_items: list[dict], source_type: str) -> list[dict]:
             text = (item.get("text") or "").strip()
             if not text:
                 continue
+            base_meta = {**(item.get("meta") or {})}
             if len(text) <= CHUNK_SIZE:
-                kb_chunks.append(item)
+                kb_chunks.append({
+                    **item,
+                    "text": text,
+                    "meta": base_meta,
+                })
             else:
-                for c in chunk_text(text, CHUNK_SIZE, CHUNK_OVERLAP):
+                for chunk_idx, c in enumerate(chunk_text(text, CHUNK_SIZE, CHUNK_OVERLAP)):
                     cleaned = (c or "").strip()
                     if cleaned:
                         kb_chunks.append(
                             {
                                 "text": cleaned,
                                 "source": item.get("source", "knowledge_base.py"),
-                                "meta": {**(item.get("meta") or {})},
+                                "meta": {**base_meta, "chunk_index": chunk_idx},
                             }
                         )
         return kb_chunks
 
     chunks = buat_chunks(raw_items)
     if chunks:
-        return chunks
+        return [c for c in chunks if (c.get("text") or "").strip()]
 
     fallback_chunks: list[dict] = []
     for page in raw_items:
         text = (page.get("text") or "").strip()
         if not text:
             continue
-        for c in chunk_text(text, CHUNK_SIZE, CHUNK_OVERLAP):
+        for chunk_idx, c in enumerate(chunk_text(text, CHUNK_SIZE, CHUNK_OVERLAP)):
             cleaned = (c or "").strip()
             if cleaned:
                 fallback_chunks.append(
@@ -126,10 +155,28 @@ def build_chunks(raw_items: list[dict], source_type: str) -> list[dict]:
                         "meta": {
                             "source": page.get("filename", "unknown"),
                             "halaman": page.get("page"),
+                            "chunk_index": chunk_idx,
                         },
                     }
                 )
     return fallback_chunks
+
+
+def run_index_chunks(chunks: list[dict], vectors: list[list[float]]) -> int:
+    enriched_chunks = [
+        {**chunk, "embedding": vectors[idx]}
+        for idx, chunk in enumerate(chunks)
+    ]
+
+    sig = inspect.signature(index_chunks)
+    params = list(sig.parameters.values())
+    has_var_kw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params)
+
+    if len(params) >= 2:
+        return index_chunks(enriched_chunks, vectors)
+    if has_var_kw or "vectors" in sig.parameters:
+        return index_chunks(enriched_chunks, vectors=vectors)
+    return index_chunks(enriched_chunks)
 
 
 def main() -> int:
@@ -177,7 +224,7 @@ def main() -> int:
         return 0
 
     try:
-        chunks = build_chunks(source_items, source_type)
+        chunks = [c for c in build_chunks(source_items, source_type) if (c.get("text") or "").strip()]
     except Exception as exc:
         print(f"[ERROR] Gagal membuat chunks: {exc}")
         return 1
@@ -193,9 +240,8 @@ def main() -> int:
     texts_to_embed = [
         (c.get("embed_text") or c.get("text") or "").strip() for c in chunks
     ]
-    texts_to_embed = [t for t in texts_to_embed if t]
-    if not texts_to_embed:
-        print("[WARN] Teks chunk kosong, proses embedding dibatalkan.")
+    if any(not t for t in texts_to_embed):
+        print("[WARN] Terdapat chunk dengan teks kosong setelah normalisasi.")
         return 1
 
     try:
@@ -219,7 +265,7 @@ def main() -> int:
         return 0
 
     try:
-        total = index_chunks(chunks)
+        total = run_index_chunks(chunks, vectors)
     except Exception as exc:
         print(f"[ERROR] Gagal mengindeks chunk ke Supabase pgvector: {exc}")
         return 1
