@@ -10,7 +10,7 @@ export default function MainLayout({ children }) {
       <WilayahProvider>
         <BmkgProvider>
           <Navbar />
-          <main className="flex-1">{children}</main>
+          <main className="pb-20 md:pb-0">{children}</main>
           <FloatingLaporButton />
         </BmkgProvider>
       </WilayahProvider>

@@ -1,0 +1,82 @@
+{
+  "tujuan": {
+    "label": "Apa itu Paras?",
+    "answer": "PARAS adalah platform yang mempertemukan tiga hal: informasi, laporan warga, dan kekuatan komunitas PKK. Tujuannya supaya lingkungan tempat tinggal kita lebih siap menghadapi perubahan iklim, mulai dari cuaca ekstrem sampai bencana.\n\nSalah satu andalan PARAS adalah informasi BMKG yang disajikan dengan kalimat sederhana, jadi mudah dipahami semua orang. Setiap informasi juga dilengkapi himbauan tentang hal yang bisa dan tidak bisa kamu lakukan, sehingga kamu tahu langkah apa yang perlu diambil."
+  },
+  "fitur": {
+    "label": "Fiturnya apa saja?",
+    "answer": "PARAS punya tiga fitur utama:\n\nChatbot Laporan: tempat kamu melaporkan masalah kebencanaan maupun masalah lingkungan yang kamu temui di sekitar tempat tinggalmu.\nAksi Komunitas: kumpulan aksi pencegahan yang bisa kamu ikuti. Aksi ini lahir dari laporan warga dan inisiatif ibu-ibu PKK, jadi benar-benar menjawab kebutuhan lingkungan sekitar.\nInformasi Cuaca dan Gempa BMKG: data diambil langsung dari API resmi BMKG, lalu bahasanya disederhanakan agar mudah dipahami. Setiap informasi dilengkapi himbauan tentang hal yang boleh dan tidak boleh dilakukan, sesuai kondisi yang sedang terjadi.Semua fitur ini bisa diakses setelah kamu login."
+  },
+  "daftar": {
+    "label": "Cara daftar",
+    "answer": "Ada dua jalur untuk membuat akun PARAS, yaitu jalur umum dan jalur anggota PKK"
+  },
+  "daftar_umum": {
+    "label": "Daftar sebagai warga umum",
+    "answer": "Cocok untuk masyarakat umum. Isi nama, email, nomor HP, password, dan data wilayah tempat tinggalmu (provinsi, kabupaten/kota, kecamatan, dan kelurahan). Setelah itu kamu akan diminta memverifikasi email. Begitu terverifikasi, akunmu langsung bisa dipakai."
+  },
+  "daftar_pkk": {
+    "label": "Daftar sebagai anggota PKK",
+    "answer": "Cocok untuk anggota PKK. Isi nama, nomor HP, email, password, dan kode wilayah PKK anda."
+  },
+  "masalah_pkk": {
+    "label": "PKK belum terdaftar",
+    "answer": "Minta ketua PKK di wilayahmu untuk mendaftarkan kelompoknya lewat menu “Daftarkan PKK”. Ketua PKK akan mengisi nama, email, nomor HP, data wilayah (provinsi, kabupaten/kota, kecamatan, dan kelurahan). Setelah terdaftar ketua pkk dapat mengakses dashboard untuk memonitor laporan dari wilayahmu. Kemudian anggota PKK dan umum dapat membuat akun dan login ke Paras. Ingat! PKK wilayahmu harus terdaftar dulu, baru anggota pkk dan umum bisa membuat akun."
+  },
+  "lapor": {
+    "label": "Cara melapor",
+    "answer": "Untuk melapor, ikuti langkah berikut:\r\n\r\n1. Masuk ke akunmu. Kalau belum punya akun, daftar dulu lewat jalur Umum atau jalur Anggota PKK.\r\n2. Buka fitur Chatbot Laporan.\r\n3. Tuliskan laporan kebencanaan atau masalah lingkungan yang kamu temui, misalnya banjir, longsor, atau sampah menumpuk.\r\n4. Sertakan dua foto sebagai bukti.\r\n5. Kirim laporanmu.\r\n\r\nSetelah dikirim, kamu bisa memantau perkembangannya di menu Pantau Laporan."
+  },
+  "darurat": {
+    "label": "Keadaan darurat",
+    "answer": "Kalau kamu sedang berada dalam kondisi bencana yang sangat mendesak, jangan menunggu laporan di PARAS diproses. Segera hubungi:\r\n\r\n112 (Panggilan Darurat Umum)\r\nNomor darurat nasional bebas pulsa. Panggilanmu akan dihubungkan ke posko darurat di daerahmu, termasuk BPBD, Pemadam Kebakaran, Ambulans, dan Satpol PP.\r\n\r\n117 (Call Center BNPB)\r\nNomor khusus Badan Nasional Penanggulangan Bencana untuk melaporkan bencana alam secara nasional.\r\n\r\nPerlu diketahui, laporan yang masuk ke PARAS membutuhkan waktu maksimal 1 x 24 jam untuk ditinjau dan dicek.\r\n\r\nKalau isu lingkungan di sekitarmu sudah sangat genting, coba hubungi ketua RT setempat. Laporanmu di PARAS tetap akan kami tindak lanjuti melalui ibu-ibu PKK dan/atau BPBD wilayahmu."
+  },
+  "status_laporan": {
+    "label": "Status dan privasi laporan",
+    "answer": "Kamu bisa memantau perkembangan laporanmu kapan saja di menu Pantau Laporan.\n\nSoal privasi: perkembangan laporanmu hanya bisa dilihat oleh kamu sendiri dan admin PARAS.\n\nKamu perlu login atau mendaftar akun dulu sebelum melapor. Alasannya, PARAS perlu mengetahui wilayahmu agar lokasi laporan sesuai dengan lokasi kejadian di sekitarmu, dan kamu bisa pantau kembali di Pantau Laporan.\n\nKalau laporanmu berstatus ditolak, kamu bisa memperbaikinya lalu mengirimkannya kembali."
+  },
+  "aksi_komunitas": {
+    "label": "Aksi komunitas",
+    "answer": "Aksi komunitas adalah kegiatan pencegahan yang dilakukan untuk mencegah terjadinya masalah lingkungan di sekitarmu.\r\n\r\nAksi ini lahir dari dua sumber: laporan warga dan inisiatif ibu-ibu PKK setempat. Jadi kegiatannya benar-benar menjawab kebutuhan lingkungan tempat kamu tinggal."
+  },
+  "info_bmkg": {
+    "label": "Info cuaca dan gempa BMKG",
+    "answer": "Informasi cuaca dan gempa di PARAS berasal dari data resmi BMKG. Kami menyederhanakannya menjadi bahasa yang mudah dimengerti, supaya kamu bisa menentukan aktivitas harian dengan lebih nyaman. Di setiap informasi juga ada himbauan tentang hal yang boleh dan tidak boleh dilakukan.\r\n\r\nCakupan informasinya:\r\n• Cuaca dan peringatan dini: tersedia sampai tingkat kelurahan.\r\n• Gempa dirasakan: gempa yang getarannya terasa sampai daerahmu.\r\n• Gempa besar: gempa di Indonesia yang baru-baru ini terjadi dengan magnitudo 5,0 atau lebih.\r\n\r\nPerlu diingat, kondisi cuaca bisa berubah-ubah. Pantau terus informasinya, terutama peringatan dini."
+  },
+  "login": {
+    "label": "Login dan lupa password",
+    "answer": "Untuk masuk, isi email atau nomor hp dan password akunmu lalu tekan tombol masuk.\r\n\r\nKalau lupa password:\r\n1. Klik \"Lupa password\" di halaman masuk.\r\n2. Kamu akan menerima email verifikasi untuk mereset password.\r\n3. Buka email tersebut, lalu buat password barumu.\r\n\r\nKalau tidak bisa masuk:\r\n• Pastikan email atau nomor hp dan password yang kamu ketik sudah sesuai, perhatikan huruf besar-kecil dan spasi.\r\n• Coba tampilkan password saat mengetik untuk memastikan tidak salah ketik.\r\n• Kalau masih gagal, gunakan opsi \"Lupa password\" untuk membuat password baru.\r\n• Pastikan email yang kamu pakai untuk mereset adalah email yang didaftarkan di akunmu."
+  },
+  "masalah_akun": {
+    "label": "Masalah akun",
+    "answer": "Email verifikasi tidak masuk?\r\n• Buka email yang sama dengan yang kamu daftarkan, bukan email lain di HP-mu.\r\n• Cek folder Spam atau Promosi, kadang email masuk ke sana.\r\n• Pastikan alamat email saat mendaftar tidak salah ketik.\r\n• Tunggu beberapa menit, lalu segarkan inbox.\r\n• Pastikan penyimpanan emailmu tidak penuh.\r\n\r\nKode PKK salah?\r\n• Pastikan kode yang kamu masukkan adalah kode dari ketua PKK di wilayahmu.\r\n• Kode tersebut berasal dari pemberitahuan resmi PARAS. Cara penyampaiannya belum tentu sama, bisa lewat email atau tampil di layar saat ketua mendaftarkan kelompok.\r\n• Periksa kembali apakah ada huruf atau angka yang tertukar.\r\n\r\nIngin mengganti wilayah, mengubah data diri, atau menghapus akun?\r\nSemuanya bisa dilakukan lewat menu Profil."
+  },
+  "perbedaan_akun": {
+    "label": "Akun umum vs anggota PKK",
+    "answer": "PARAS punya dua jenis akun:\r\n\r\n• Akun Umum: untuk warga masyarakat.\r\n• Akun PKK: untuk anggota PKK, didaftarkan dengan kode wilayah PKK.\r\n\r\nPilih sesuai statusmu saat mendaftar."
+  },
+  "apa_itu_pkk": {
+    "label": "Apa itu PKK?",
+    "answer": "PKK adalah singkatan dari Pemberdayaan dan Kesejahteraan Keluarga. Ini adalah gerakan nasional di Indonesia yang bertujuan memberdayakan masyarakat dan meningkatkan kesejahteraan keluarga. Gerakan ini berakar dari tingkat desa hingga pusat, dan keberadaannya diatur dalam regulasi.\r\n\r\nKenapa PARAS melibatkan PKK?\r\nPARAS ingin menggandeng komunitas perempuan akar rumput, yang dekat dengan masyarakat dan sudah ada di banyak wilayah, untuk melakukan aksi iklim bersama.\r\n\r\nWalaupun selama ini PKK identik dengan ibu-ibu, regulasi resminya menyatakan bahwa gerakan ini inklusif untuk seluruh warga negara. Jadi laki-laki juga bisa bergabung."
+  },
+  "biaya": {
+    "label": "Biaya penggunaan",
+    "answer": "Gratis. Semua layanan di PARAS bisa kamu gunakan tanpa biaya."
+  },
+  "privasi": {
+    "label": "Keamanan data",
+    "answer": "Data kamu kami jaga dengan serius. Berikut penggunaannya:\n\n• Data wilayah dipakai untuk menampilkan informasi BMKG yang sesuai dengan wilayahmu, dan untuk mencatat lokasi wilayah yang kamu laporkan.\n• Nomor HP dan email hanya bisa diakses oleh admin PARAS."
+  },
+  "sapaan": {
+    "label": "Sapaan",
+    "answer": "Halo! PARAS hadir. 👋\n\nAku bisa membantu menjelaskan tentang PARAS, fitur-fiturnya, cara daftar, sampai cara melapor. Mau tanya apa?"
+  },
+  "terima_kasih": {
+    "label": "Terima kasih",
+    "answer": "Sama-sama! Senang bisa membantu. 😊\r\n\r\nKalau masih ada yang ingin ditanyakan tentang PARAS, tanya saja ya."
+  },
+  "wajib_login": {
+    "label": "Kenapa harus login?",
+    "answer": "Fitur-fitur PARAS baru bisa diakses setelah kamu login. Kalau belum punya akun, kamu bisa daftar dulu lewat jalur Umum atau jalur Anggota PKK.\r\n\r\nKenapa harus login?\r\nPARAS perlu mengetahui wilayah tempat tinggalmu. Data wilayah ini dipakai untuk:\r\n\r\n• Menyesuaikan informasi cuaca, peringatan dini, dan gempa BMKG dengan wilayahmu, supaya info yang tampil relevan untukmu.\r\n• Mencatat lokasi laporan, supaya laporan yang kamu kirim sesuai dengan lokasi kejadian di wilayahmu.\r\n\r\nData wilayahmu hanya digunakan untuk keperluan tersebut."
+  }
+}

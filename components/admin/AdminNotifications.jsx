@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
     Bell,
@@ -12,214 +12,322 @@ import {
     Siren,
     Trash2,
     UserPlus,
-    X
+    X,
+    XCircle,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
-import { areaLabel } from '@/lib/currentUser';
-import { formatSubmitted, useRegistrations } from '@/lib/memberStore';
-import { useAksiState } from '@/lib/aksiStore';
+import { useAdmin } from '@/context/AdminContext';
+import { useReportContext } from '@/context/ReportContext';
+import { formatSubmitted } from '@/lib/memberStore';
+import { useAdminAksi } from '@/lib/adminAksi';
+import { createClient } from '@/lib/supabase/client';
 
 const meta = {
     emergency: {
         Icon: Siren,
-        cls: 'bg-red-50 text-red-600'
+        cls: 'bg-red-50 text-red-600',
     },
     report: {
         Icon: FileWarning,
-        cls: 'bg-amber-50 text-amber-700'
+        cls: 'bg-amber-50 text-amber-700',
+    },
+    rejected: {
+        Icon: XCircle,
+        cls: 'bg-red-50 text-red-700',
     },
     approval: {
         Icon: UserPlus,
-        cls: 'bg-pink-xlight text-pink-dark'
+        cls: 'bg-pink-xlight text-pink-dark',
     },
     action: {
         Icon: Leaf,
-        cls: 'bg-brand-light text-brand'
+        cls: 'bg-brand-light text-brand',
     },
 };
 
-// Data contoh untuk prototipe frontend
-const seed = [
-    {
-        id: 'n-emg-1',
-        type: 'emergency',
-        title: 'Laporan darurat masuk',
-        body: 'Banjir setinggi 50 cm di RT 04 / RW 05 perlu diteruskan ke BPBD.',
-        time: '5 menit lalu',
-        sortAt: 0,
-        to: '/admin/ai-assistant?queue=emergency'
-    },
-    {
-        id: 'n-rep-1',
-        type: 'report',
-        title: 'Laporan baru diterima',
-        body: 'Tumpukan sampah di Jl. Melati RW 03 masuk ke Tabungan Aksi.',
-        time: '25 menit lalu',
-        sortAt: 0,
-        to: '/admin/actions/savings'
-    },
-    {
-        id: 'n-act-1',
-        type: 'action',
-        title: 'Bukti aksi menunggu verifikasi',
-        body: '3 foto bukti baru dari peserta Gotong Royong Saluran Air RT 04.',
-        time: '1 jam lalu',
-        sortAt: 0,
-        to: '/admin/actions'
-    },
-    {
-        id: 'n-act-2',
-        type: 'action',
-        title: 'Draf aksi komunitas siap terbit',
-        body: 'Asisten AI menyusun draf aksi dari 2 laporan pada klaster drainase.',
-        time: 'Kemarin',
-        sortAt: 0,
-        read: true,
-        to: '/admin/ai-assistant'
-    },
-];
+function toMillis(value) {
+    if (!value) return Date.now();
+    const parsed = new Date(value).getTime();
+    return Number.isNaN(parsed) ? Date.now() : parsed;
+}
+
+function reportNotifications(reports, currentTime) {
+    return reports.flatMap((report) => {
+        const time = currentTime ? formatSubmitted(toMillis(report.createdAt), currentTime) : '';
+        const baseId = `n-report-${report.databaseId || report.id}`;
+        const title = report.title || 'Laporan warga';
+        const area = report.area || report.regionLabel || 'Wilayah tidak diketahui';
+
+        if (!report.dashboardDecision) {
+            return [{
+                id: `${baseId}-submitted`,
+                type: 'report',
+                sortAt: toMillis(report.createdAt),
+                title: 'Laporan baru menunggu keputusan',
+                body: `${title} · ${area}. Tentukan Jalur A, Jalur B, atau tolak.`,
+                time,
+                to: '/admin',
+            }];
+        }
+
+        const reviewedAt = toMillis(report.dashboardReviewedAt || report.createdAt);
+
+        if (report.dashboardDecision === 'rejected') {
+            return [{
+                id: `${baseId}-rejected`,
+                type: 'rejected',
+                sortAt: reviewedAt,
+                title: 'Laporan ditolak',
+                body: `${title} · ${report.rejectionReason || 'Alasan tidak tersedia.'}`,
+                time: currentTime ? formatSubmitted(reviewedAt, currentTime) : '',
+                to: '/admin/ai-assistant/archive/report-history',
+            }];
+        }
+
+        if (report.dashboardRoute === 'emergency') {
+            return [{
+                id: `${baseId}-accepted-a`,
+                type: 'emergency',
+                sortAt: reviewedAt,
+                title: 'Laporan diterima ke Jalur A',
+                body: `${title} masuk antrean darurat Asisten AI untuk diteruskan ke BPBD.`,
+                time: currentTime ? formatSubmitted(reviewedAt, currentTime) : '',
+                to: '/admin/ai-assistant?queue=emergency',
+            }];
+        }
+
+        if (report.dashboardRoute === 'community') {
+            return [{
+                id: `${baseId}-accepted-b`,
+                type: 'action',
+                sortAt: reviewedAt,
+                title: 'Laporan masuk Tabungan Aksi',
+                body: `${title} dikelompokkan ke klaster ${report.aiCategory || 'kategori laporan'} di ${area}.`,
+                time: currentTime ? formatSubmitted(reviewedAt, currentTime) : '',
+                to: '/admin/actions/savings',
+            }];
+        }
+
+        return [];
+    });
+}
 
 export default function AdminNotifications() {
     const router = useRouter();
-    const registrations = useRegistrations();
-    const { aksi } = useAksiState();
+    const admin = useAdmin();
+    const areaLabel = admin?.areaLabel || '';
+    const { reports } = useReportContext();
+    const { aksi } = useAdminAksi();
     const [open, setOpen] = useState(false);
     const [confirmClear, setConfirmClear] = useState(false);
     const [currentTime, setCurrentTime] = useState(null);
-    
+    const [readIds, setReadIds] = useState(() => new Set());
+    const [removedIds, setRemovedIds] = useState(() => new Set());
+    const [backendRegistrations, setBackendRegistrations] = useState([]);
+
+    const registrations = backendRegistrations;
+    const panelRef = useRef(null);
+
     useEffect(() => {
         setCurrentTime(Date.now());
     }, []);
 
-    const [readIds, setReadIds] = useState(
-        () => new Set(seed.filter((n) => n.read).map((n) => n.id))
-    );
+    // Status baca/hapus notifikasi disimpan di backend, bukan hanya state lokal.
+    useEffect(() => {
+        if (!admin?.userId) return;
 
-    const [removedIds, setRemovedIds] = useState(() => new Set());
+        let active = true;
+        const supabase = createClient();
 
-    const panelRef = useRef(null);
+        async function loadState() {
+            const { data, error } = await supabase
+                .from('admin_notification_states')
+                .select('notif_key, read_at, removed_at')
+                .eq('admin_user_id', admin.userId);
 
-    // Notifikasi pendaftaran anggota yang menunggu persetujuan
+            if (!active) return;
+            if (error) {
+                console.error('Gagal memuat state notifikasi admin:', error);
+                return;
+            }
+
+            const read = new Set();
+            const removed = new Set();
+            (data || []).forEach((row) => {
+                if (row.read_at) read.add(row.notif_key);
+                if (row.removed_at) removed.add(row.notif_key);
+            });
+
+            setReadIds(read);
+            setRemovedIds(removed);
+        }
+
+        loadState();
+        return () => {
+            active = false;
+        };
+    }, [admin?.userId]);
+
+    // Pendaftaran yang menunggu persetujuan diambil dari backend.
+    useEffect(() => {
+        if (!admin?.userId || !admin?.regionId) return;
+
+        let active = true;
+        const supabase = createClient();
+
+        async function loadRegistrations() {
+            const { data, error } = await supabase.rpc('get_admin_pending_registrations');
+
+            if (!active) return;
+            if (error) {
+                console.error('Gagal memuat pendaftar pending:', error);
+                return;
+            }
+
+            setBackendRegistrations(
+                (data || []).map((item) => ({
+                    id: String(item.registration_id),
+                    name: item.full_name || 'Pendaftar',
+                    type: item.account_category === 'anggota_pkk' ? 'pkk' : 'general',
+                    kelurahan: areaLabel,
+                    submittedAt: new Date(item.created_at).getTime(),
+                    status: 'pending',
+                }))
+            );
+        }
+
+        loadRegistrations();
+        return () => {
+            active = false;
+        };
+    }, [admin?.userId, admin?.regionId, areaLabel]);
+
+    // Notifikasi pendaftaran anggota yang menunggu persetujuan.
     const approvals = registrations
-        .filter(
-            (r) =>
-                r.status === 'pending' &&
-                r.kelurahan === areaLabel
-        )
-        .map((r) => ({
-            id: `n-reg-${r.id}`,
+        .filter((item) => item.status === 'pending' && item.kelurahan === areaLabel)
+        .map((item) => ({
+            id: `n-reg-${item.id}`,
             type: 'approval',
-            sortAt: r.submittedAt,
-            title: `Pendaftar ${r.type === 'pkk' ? 'Anggota PKK' : 'Warga Umum'} menunggu persetujuan`,
-            body: `${r.name} mendaftar dari ${r.kelurahan}. Setujui dalam 1x24 jam.`,
-            time: currentTime ? formatSubmitted(r.submittedAt, currentTime) : '',
+            sortAt: toMillis(item.submittedAt),
+            title: `Pendaftar ${item.type === 'pkk' ? 'Anggota PKK' : 'Warga Umum'} menunggu persetujuan`,
+            body: `${item.name} mendaftar dari ${item.kelurahan}. Setujui dalam 1x24 jam.`,
+            time: currentTime ? formatSubmitted(toMillis(item.submittedAt), currentTime) : '',
             to: '/admin/manajemen-pengguna',
         }));
 
     const evidenceNotifications = aksi.flatMap((action) =>
-    (action.evidences || [])
-        .filter((e) => e.status === 'menunggu')
-        .map((e) => ({
-            id: `n-evidence-${e.id}`,
-            type: 'action',
-            sortAt: e.submittedAt,
-            title: 'Bukti aksi menunggu verifikasi',
-            body: `${e.participantName} mengirim bukti untuk aksi ${action.title}.`,
-            time: new Date(e.submittedAt).toLocaleString('id-ID', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-}),
-            to: '/admin/actions',
-        }))
-);
-    // Gabungkan dan urutkan seluruh notifikasi terbaru
+        (action.evidences || [])
+            .filter((evidence) => evidence.status === 'menunggu')
+            .map((evidence) => ({
+                id: `n-evidence-${evidence.id}`,
+                type: 'action',
+                sortAt: toMillis(evidence.submittedAt),
+                title: 'Bukti aksi menunggu verifikasi',
+                body: `${evidence.participantName} mengirim bukti untuk aksi ${action.title}.`,
+                time: currentTime ? formatSubmitted(toMillis(evidence.submittedAt), currentTime) : '',
+                to: '/admin/actions',
+            }))
+    );
+
     const notifications = [
-    ...seed.filter((n) => n.id !== 'n-act-1'),
-    ...evidenceNotifications,
-    ...approvals,
-]
-        .filter((n) => !removedIds.has(n.id))
-        .sort((a, b) => new Date(b.sortAt) - new Date(a.sortAt))
-        .map((n) => ({
-            ...n,
-            read: readIds.has(n.id)
+        ...reportNotifications(reports, currentTime),
+        ...evidenceNotifications,
+        ...approvals,
+    ]
+        .filter((item) => !removedIds.has(item.id))
+        .sort((a, b) => b.sortAt - a.sortAt)
+        .map((item) => ({
+            ...item,
+            read: readIds.has(item.id),
         }));
 
-    const unread = notifications.filter((n) => !n.read).length;
+    const unread = notifications.filter((item) => !item.read).length;
 
-    // Tandai satu notifikasi sebagai dibaca
+    const persistState = useCallback(async (notifKey, patch) => {
+        if (!admin?.userId || !notifKey) return;
+
+        const supabase = createClient();
+        const { error } = await supabase
+            .from('admin_notification_states')
+            .upsert(
+                {
+                    admin_user_id: admin.userId,
+                    notif_key: notifKey,
+                    ...patch,
+                },
+                { onConflict: 'admin_user_id,notif_key' }
+            );
+
+        if (error) console.error('Gagal menyimpan state notifikasi admin:', error);
+    }, [admin?.userId]);
+
     const markRead = (id) => {
-        setReadIds((current) => {
-            const next = new Set(current);
-            next.add(id);
-            return next;
-        });
+        setReadIds((current) => new Set(current).add(id));
+        void persistState(id, { read_at: new Date().toISOString() });
     };
 
-    // Tandai semua notifikasi sebagai dibaca
     const markAllRead = () => {
         setReadIds((current) => {
             const next = new Set(current);
-
-            notifications.forEach((n) => {
-                next.add(n.id);
-            });
-
+            notifications.forEach((item) => next.add(item.id));
             return next;
+        });
+
+        notifications.forEach((item) => {
+            void persistState(item.id, { read_at: new Date().toISOString() });
         });
     };
 
-    // Hapus satu notifikasi
     const remove = (id) => {
-        setRemovedIds((current) => {
-            const next = new Set(current);
-            next.add(id);
-            return next;
-        });
+        setRemovedIds((current) => new Set(current).add(id));
+        void persistState(id, { removed_at: new Date().toISOString() });
     };
 
-    // Hapus seluruh notifikasi setelah konfirmasi
     const clearAll = () => {
         setRemovedIds((current) => {
             const next = new Set(current);
-
-            notifications.forEach((n) => {
-                next.add(n.id);
-            });
-
+            notifications.forEach((item) => next.add(item.id));
             return next;
         });
+
+        const rows = notifications.map((item) => ({
+            admin_user_id: admin.userId,
+            notif_key: item.id,
+            removed_at: new Date().toISOString(),
+        }));
+
+        if (rows.length > 0) {
+            const supabase = createClient();
+            supabase
+                .from('admin_notification_states')
+                .upsert(rows, { onConflict: 'admin_user_id,notif_key' })
+                .then(({ error }) => {
+                    if (error) console.error('Gagal menghapus semua notifikasi admin:', error);
+                });
+        }
 
         setConfirmClear(false);
     };
 
-    // Buka halaman yang berkaitan dengan notifikasi
-    function openNotification(n) {
-        markRead(n.id);
+    function openNotification(item) {
+        markRead(item.id);
         setOpen(false);
-        router.push(n.to);
+        router.push(item.to);
     }
 
-    // Menutup dropdown ketika klik di luar atau tekan Escape
     useEffect(() => {
         if (!open) return;
 
-        const close = (e) => {
-            if (
-                panelRef.current &&
-                !panelRef.current.contains(e.target)
-            ) {
+        const close = (event) => {
+            if (panelRef.current && !panelRef.current.contains(event.target)) {
                 setOpen(false);
                 setConfirmClear(false);
             }
         };
 
-        const onKey = (e) => {
-            if (e.key === 'Escape') {
+        const onKey = (event) => {
+            if (event.key === 'Escape') {
                 setOpen(false);
                 setConfirmClear(false);
             }
@@ -236,7 +344,6 @@ export default function AdminNotifications() {
 
     return (
         <div className="relative" ref={panelRef}>
-            {/* Tombol lonceng */}
             <button
                 type="button"
                 onClick={() => setOpen((current) => !current)}
@@ -260,17 +367,11 @@ export default function AdminNotifications() {
                 )}
             </button>
 
-            {/* Dropdown */}
             {open && (
                 <div className="absolute right-0 top-11 z-50 w-[calc(100vw-2rem)] max-w-96 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
-
-                    {/* Header */}
                     <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
                         <div className="flex items-center gap-2">
-                            <p className="text-sm font-black text-slate-900">
-                                Notifikasi
-                            </p>
-
+                            <p className="text-sm font-black text-slate-900">Notifikasi</p>
                             {unread > 0 && (
                                 <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-black text-red-700">
                                     {unread} belum dibaca
@@ -290,80 +391,60 @@ export default function AdminNotifications() {
                         )}
                     </div>
 
-                    {/* Daftar notifikasi */}
                     {notifications.length === 0 ? (
                         <div className="flex flex-col items-center px-4 py-10 text-center">
                             <span className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100">
                                 <BellOff className="h-5 w-5 text-slate-400" />
                             </span>
-
                             <p className="mt-3 text-sm font-bold text-slate-800">
                                 Tidak ada notifikasi
                             </p>
-
                             <p className="mt-1 text-xs text-slate-500">
                                 Laporan masuk dan pendaftar baru akan muncul di sini.
                             </p>
                         </div>
                     ) : (
                         <ul className="max-h-96 divide-y divide-slate-100 overflow-y-auto">
-                            {notifications.map((n) => {
-                                const m = meta[n.type];
+                            {notifications.map((item) => {
+                                const m = meta[item.type] || meta.report;
 
                                 return (
                                     <li
-                                        key={n.id}
+                                        key={item.id}
                                         className={cn(
                                             'relative flex gap-2 px-4 py-3 transition-colors hover:bg-slate-50',
-                                            !n.read && 'bg-brand-xlight/50'
+                                            !item.read && 'bg-brand-xlight/50'
                                         )}
                                     >
-                                        {/* Isi notifikasi */}
                                         <button
                                             type="button"
-                                            onClick={() => openNotification(n)}
+                                            onClick={() => openNotification(item)}
                                             className="flex min-w-0 flex-1 gap-3 text-left"
-                                            aria-label={`${n.title}${n.read ? '' : ', belum dibaca'}`}
+                                            aria-label={`${item.title}${item.read ? '' : ', belum dibaca'}`}
                                         >
-                                            <span
-                                                className={cn(
-                                                    'flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
-                                                    m.cls
-                                                )}
-                                            >
+                                            <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-full', m.cls)}>
                                                 <m.Icon className="h-4 w-4" />
                                             </span>
-
                                             <span className="min-w-0 flex-1">
-                                                <span
-                                                    className={cn(
-                                                        'block text-xs text-slate-900',
-                                                        n.read
-                                                            ? 'font-semibold'
-                                                            : 'font-black'
-                                                    )}
-                                                >
-                                                    {n.title}
+                                                <span className={cn('block text-xs text-slate-900', item.read ? 'font-semibold' : 'font-black')}>
+                                                    {item.title}
                                                 </span>
-
                                                 <span className="mt-0.5 block text-xs leading-relaxed text-slate-500">
-                                                    {n.body}
+                                                    {item.body}
                                                 </span>
-
                                                 <span className="mt-1 block text-[10px] font-semibold text-slate-400">
-                                                    {n.time}
+                                                    {item.time}
                                                 </span>
                                             </span>
                                         </button>
 
-                                        {/* Tombol aksi notifikasi */}
                                         <div className="flex shrink-0 items-start gap-1">
-                                            {!n.read && (
+                                            {!item.read && (
                                                 <button
                                                     type="button"
-                                                    onClick={() => markRead(n.id)}
+                                                    onClick={() => markRead(item.id)}
                                                     className="flex h-6 w-6 items-center justify-center rounded-full text-emerald-600 hover:bg-emerald-50"
-                                                    aria-label={`Tandai dibaca: ${n.title}`}
+                                                    aria-label={`Tandai dibaca: ${item.title}`}
                                                     title="Tandai dibaca"
                                                 >
                                                     <Check className="h-3.5 w-3.5" />
@@ -372,20 +453,17 @@ export default function AdminNotifications() {
 
                                             <button
                                                 type="button"
-                                                onClick={() => remove(n.id)}
+                                                onClick={() => remove(item.id)}
                                                 className="flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-red-600"
-                                                aria-label={`Hapus notifikasi: ${n.title}`}
+                                                aria-label={`Hapus notifikasi: ${item.title}`}
                                                 title="Hapus notifikasi"
                                             >
                                                 <X className="h-3.5 w-3.5" />
                                             </button>
                                         </div>
 
-                                        {!n.read && (
-                                            <span
-                                                className="absolute left-2 top-4 h-2 w-2 rounded-full bg-red-500"
-                                                aria-hidden="true"
-                                            />
+                                        {!item.read && (
+                                            <span className="absolute left-2 top-4 h-2 w-2 rounded-full bg-red-500" aria-hidden="true" />
                                         )}
                                     </li>
                                 );
@@ -393,7 +471,6 @@ export default function AdminNotifications() {
                         </ul>
                     )}
 
-                    {/* Footer */}
                     {notifications.length > 0 && (
                         <div className="border-t border-slate-100 px-4 py-2.5">
                             <button
@@ -407,7 +484,6 @@ export default function AdminNotifications() {
                         </div>
                     )}
 
-                    {/* Konfirmasi hapus semua */}
                     {confirmClear && (
                         <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-900/30 p-4">
                             <div
@@ -419,19 +495,12 @@ export default function AdminNotifications() {
                                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-50">
                                     <Trash2 className="h-5 w-5 text-red-600" />
                                 </div>
-
-                                <h3
-                                    id="clear-notifications-title"
-                                    className="mt-3 text-sm font-black text-slate-900"
-                                >
+                                <h3 id="clear-notifications-title" className="mt-3 text-sm font-black text-slate-900">
                                     Hapus semua notifikasi?
                                 </h3>
-
                                 <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                                    Semua notifikasi akan dihapus dari daftar.
-                                    Data laporan dan aksi tidak akan terpengaruh.
+                                    Semua notifikasi akan dihapus dari daftar. Data laporan dan aksi tidak akan terpengaruh.
                                 </p>
-
                                 <div className="mt-5 flex justify-end gap-2">
                                     <button
                                         type="button"
@@ -440,7 +509,6 @@ export default function AdminNotifications() {
                                     >
                                         Batal
                                     </button>
-
                                     <button
                                         type="button"
                                         onClick={clearAll}

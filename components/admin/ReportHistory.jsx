@@ -28,8 +28,10 @@ const filteredReports = historyReports.filter((report) => {
 
 const getDecisionLabel = (report) => {
     if (report.dashboardDecision === 'rejected') return 'Ditolak';
-    if (report.dashboardDecision === 'overridden') return 'Override';
-    return 'Diterima';
+    if (report.dashboardDecision === 'overridden') return 'Override (data lama)';
+    return report.dashboardRoute === 'emergency'
+        ? 'Diterima Jalur A'
+        : 'Diterima Jalur B';
 };
 
 const getStatusLabel = (status) => {
@@ -100,22 +102,19 @@ return (
                                         ? 'bg-orange-50 text-orange-700'
                                         : 'bg-brand-light text-brand-dark'
                             }`}>
-                                {report.dashboardDecision === 'rejected'
-                                    ? 'Ditolak'
-                                    : report.dashboardRoute === 'emergency'
-                                        ? 'Jalur A'
-                                        : 'Jalur B'}
+                                {getDecisionLabel(report)}
                             </span>
-                            {report.dashboardDecision === 'overridden' && (
-                                <span className="rounded-full bg-purple-50 px-2 py-0.5 text-[10px] font-bold text-purple-700">
-                                    Override
-                                </span>
-                            )}
                         </div>
 
                         <h2 className="mt-1.5 truncate text-sm font-bold text-slate-800">
                             {report.title}
                         </h2>
+
+                        {report.dashboardDecision === 'rejected' && report.rejectionReason && (
+                            <p className="mt-1 line-clamp-2 text-[11px] italic text-red-600">
+                                Alasan: {report.rejectionReason}
+                            </p>
+                        )}
 
                         <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
                             <span className="inline-flex items-center gap-1">
@@ -180,6 +179,17 @@ return (
             </div>
 
             <div className="mt-6 max-h-[60vh] overflow-y-auto">
+    {selectedReport?.dashboardDecision === 'rejected' && selectedReport.rejectionReason && (
+        <div className="mb-5 rounded-xl border border-red-100 bg-red-50 p-4">
+            <p className="text-xs font-black text-red-800">Alasan penolakan</p>
+            <p className="mt-1 text-xs leading-relaxed text-red-700">
+                {selectedReport.rejectionReason}
+            </p>
+            <p className="mt-2 text-[11px] text-red-500">
+                Alasan ini ditampilkan pada Pantau Lapor zona publik.
+            </p>
+        </div>
+    )}
     <h3 className="mb-5 text-sm font-black text-slate-800">
         Riwayat Aktivitas
     </h3>

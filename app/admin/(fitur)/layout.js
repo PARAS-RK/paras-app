@@ -4,20 +4,24 @@ import { AdminProvider } from "@/context/AdminContext";
 import { ReportProvider } from "@/context/ReportContext";
 import AdminShell from "@/components/admin/AdminShell";
 import { getAdminSession } from "@/lib/auth/admin";
-import AdminNotifications from "@/components/admin/AdminNotifications";
+
+// Layout ini membaca sesi (cookies), jadi harus dirender sebagai route dinamis.
+export const instant = false;
 
 export default async function AdminPanelLayout({ children }) {
-  await connection();
-  const admin = await getAdminSession();
-  if (!admin) redirect("/admin/login");
+    await connection();
 
-  return (
-    <AdminProvider admin={admin}>
-      <ReportProvider source="admin" regionId={admin.regionID}>
-        <AdminShell>
-          {children}
-        </AdminShell>
-      </ReportProvider>
-    </AdminProvider>
-  );
+    const admin = await getAdminSession();
+
+    if (!admin) redirect("/admin/login");
+
+    return (
+        <AdminProvider admin={admin}>
+            <ReportProvider source="admin" regionId={admin.regionId}>
+                <AdminShell>
+                    {children}
+                </AdminShell>
+            </ReportProvider>
+        </AdminProvider>
+    );
 }

@@ -1,16 +1,17 @@
 "use client";
 
-import { useMemo, useState } from 'react';
-import { AlertTriangle, Archive, Bot, CalendarDays, Camera, Check, CheckCircle2, ChevronDown, ChevronUp, CircleDot, ClipboardCheck, Clock3, Copy, Download, FileText, Phone, LoaderCircle, MapPin, Pencil, Send, ShieldCheck, Siren, Sparkles, Upload, Users, XCircle, X, } from 'lucide-react';
+import { useRef, useState, useEffect } from 'react';
+import { Archive, Bot, CalendarDays, Camera, Check, CheckCircle2, ChevronDown, ChevronUp, CircleDot, ClipboardCheck, Clock3, Copy, Download, FileText, Phone, LoaderCircle, MapPin, Pencil, Send, ShieldCheck, Siren, Sparkles, Upload, Users, XCircle, } from 'lucide-react';
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { cn } from '@/lib/utils';
 import { useReportContext } from '@/context/ReportContext';
-import { publishCommunityAksi, useAksiState } from '@/lib/aksiStore';
-import { areaFull, areaLabel } from '@/lib/currentUser';
+import { useAdminAksi } from '@/lib/adminAksi';
+import { useAdmin } from '@/context/AdminContext';
 const statusConfig = {
     pending: { label: 'Pending Review', className: 'bg-amber-100 text-amber-800', icon: Clock3 },
-    in_progress: { label: 'Diproses', className: 'bg-blue-100 text-blue-800', icon: LoaderCircle },
+    in_review: { label: 'Menunggu Penanganan', className: 'bg-amber-100 text-amber-800', icon: Clock3 },
+    in_progress: { label: 'Sedang Ditangani', className: 'bg-blue-100 text-blue-800', icon: LoaderCircle },
     handled: { label: 'Selesai', className: 'bg-brand-light text-brand', icon: CheckCircle2 },
     rejected: { label: 'Ditolak', className: 'bg-red-100 text-red-700', icon: XCircle },
 };
@@ -29,37 +30,24 @@ const queueTabs = [
     },
 ];
 
-const exactLocations = {
-    'LP-2024-089': `Depan RT 04 / RW 05, ${areaLabel}`,
-    'LP-2024-088': `Permukiman RT 04 / RW 05, ${areaLabel}`,
-    'LP-2024-087': `Area usaha RW 05, ${areaLabel}`,
-    'LP-2024-086': `Jl. Melati RW 03, ${areaLabel}`,
-    'LP-2024-085': `Lahan kosong RT 05 / RW 05, ${areaLabel}`,
-    'LP-2024-082': `RT 02 / RT 04 / RT 05, ${areaLabel}`,
-};
-function incidentLocation(report) {
-    return exactLocations[report.id] || report.location || areaLabel;
+function incidentLocation(report, areaLabel) {
+    return report.locationDetail || report.regionLabel || 'Lokasi belum tersedia';
 }
-function urgencyLevel(report) {
-    if (report.urgency >= 7)
-        return { label: 'Tinggi/Darurat', className: 'bg-red-100 text-red-700', icon: Siren };
-    if (report.urgency >= 4)
-        return { label: 'Sedang', className: 'bg-orange-100 text-slate-900', icon: AlertTriangle };
-    return { label: 'Rendah', className: 'bg-slate-100 text-slate-700', icon: CircleDot };
-}
-function bpbdTemplate(report) {
-    return `Yth. BPBD Jakarta Selatan, mohon bantuan penanganan segera untuk wilayah ${areaLabel}.
+
+function bpbdTemplate(report, areaLabel, areaFull) {
+    return `Yth. BPBD,
 
 Kejadian: ${report.title}
-TKP: ${incidentLocation(report)}
+Pelapor: ${report.reporter || 'Tidak diketahui'}
+TKP: ${incidentLocation(report, areaLabel)}
 Wilayah administratif: ${areaFull}
 Waktu laporan: ${report.date}
-Tingkat urgensi: ${urgencyLevel(report).label}
 
 Situasi: ${report.details}
 
 Mohon konfirmasi tindak lanjut. Terima kasih.`;
 }
+
 function downloadEvidenceImage(report) {
     const safeTitle = report.title.replace(/[<>&]/g, '');
     const safeLocation = incidentLocation(report).replace(/[<>&]/g, '');
@@ -202,11 +190,25 @@ function RejectionDialog({ open, title, onClose, onConfirm }) {
     </div>);
 }
 function StatusPill({ status }) {
-    const config = statusConfig[status];
+    const normalizedStatus = {
+        submitted: 'pending',
+        in_review: 'in_review',
+        in_progress: 'in_progress',
+        resolved: 'handled',
+    }[status] || status;
+
+    const config = statusConfig[normalizedStatus] || statusConfig.pending;
     const Icon = config.icon;
-    return (<span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold', config.className)}>
-      <Icon className="h-3.5 w-3.5" aria-hidden/> {config.label}
-    </span>);
+
+    return (
+        <span className={cn(
+            'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold',
+            config.className
+        )}>
+            <Icon className="h-3.5 w-3.5" aria-hidden />
+            {config.label}
+        </span>
+    );
 }
 function MetricCard({ label, value, icon: Icon, tone }) {
     return (<div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -220,15 +222,10 @@ function MetricCard({ label, value, icon: Icon, tone }) {
     </div>);
 }
 function ReportSummary({ report, open, onToggle }) {
-    const urgency = urgencyLevel(report);
-    const UrgencyIcon = urgency.icon;
     return (<>
       <div className="flex flex-wrap items-center gap-2">
         <span className="rounded-md bg-slate-100 px-2 py-1 font-mono text-xs text-slate-500">#{report.id}</span>
         <StatusPill status={report.status}/>
-        <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold', urgency.className)}>
-          <UrgencyIcon className="h-3.5 w-3.5" aria-hidden/> {urgency.label}
-        </span>
       </div>
       <h3 className="mt-3 text-base font-black text-slate-900">{report.title}</h3>
       <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -248,30 +245,79 @@ function ReportSummary({ report, open, onToggle }) {
     </>);
 }
 function EmergencyCard({ report, onApprove, onFinish, onSaveDraft }) {
+    const admin = useAdmin();
     const [message, setMessage] = useState(
-        report.emergencyDraft ?? bpbdTemplate(report)
+        report.emergencyDraft ?? bpbdTemplate(report, admin.areaLabel, admin.areaFull)
     );
     const [hotline, setHotline] = useState(
-        report.emergencyHotline ?? '112 — Jakarta Siaga'
+        report.emergencyHotline ?? ''
     );
+    const [contacts, setContacts] = useState([]);
+    const [contactsLoading, setContactsLoading] = useState(true);
+
+    useEffect(() => {
+    let cancelled = false;
+
+    async function loadContacts() {
+        setContactsLoading(true);
+
+        try {
+            const response = await fetch('/api/admin/emergency-contacts');
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Gagal mengambil kontak darurat');
+            }
+
+            if (cancelled) return;
+
+            const list = Array.isArray(result.contacts) ? result.contacts : [];
+            setContacts(list);
+
+            if (!report.emergencyHotline) {
+                const bpbd = list.find((item) => item.agency_type === 'bpbd');
+                setHotline(bpbd?.phone_number ?? list[0]?.phone_number ?? '');
+            }
+        } catch (error) {
+            console.error('Gagal memuat kontak darurat:', error);
+            if (!cancelled) setContacts([]);
+        } finally {
+            if (!cancelled) setContactsLoading(false);
+        }
+    }
+
+    loadContacts();
+
+    return () => {
+        cancelled = true;
+    };
+}, [report.id, report.emergencyHotline]);
+
     const [copied, setCopied] = useState(false);
     const [proofFile, setProofFile] = useState(null);
     const [completionNotes, setCompletionNotes] = useState('');
     const [detailsOpen, setDetailsOpen] = useState(false);
-    const [draftOpen, setDraftOpen] = useState(report.status === 'pending');
+    const [draftOpen, setDraftOpen] = useState(report.status === 'in_review');
     const [resolutionOpen, setResolutionOpen] = useState(false);
+    const [handling, setHandling] = useState(false);
     const [editingDraft, setEditingDraft] = useState(false);
     const [draftSaved, setDraftSaved] = useState(false);
 
     const hasDraftChanges =
-        message !== (report.emergencyDraft ?? bpbdTemplate(report)) ||
-        hotline !== (report.emergencyHotline ?? '112 — Jakarta Siaga');
+        message !== (report.emergencyDraft ?? bpbdTemplate(report, admin.areaLabel, admin.areaFull)) ||
+        hotline !== (report.emergencyHotline ?? '');
 
-    function saveDraft() {
-        onSaveDraft(message, hotline);
-        setEditingDraft(false);
-        setDraftSaved(true);
+    async function saveDraft() {
+    const saved = await onSaveDraft(message, hotline);
+
+    if (!saved) {
+        setDraftSaved(false);
+        return;
     }
+
+    setEditingDraft(false);
+    setDraftSaved(true);
+}
 
     async function copyMessage() {
         await navigator.clipboard.writeText(`Hotline: ${hotline}\n\n${message}`);
@@ -279,13 +325,22 @@ function EmergencyCard({ report, onApprove, onFinish, onSaveDraft }) {
         window.setTimeout(() => setCopied(false), 1800);
     }
 
-    function markHandled() {
-        onApprove();
+    async function markHandled() {
+        if (handling) return;
+
+        setHandling(true);
+        const approved = await onApprove();
+        setHandling(false);
+
+        if (!approved) {
+            alert('Gagal memulai penanganan. Silakan coba lagi.');
+            return;
+        }
+
         setDraftOpen(false);
         setResolutionOpen(true);
     }
-    const urgency = urgencyLevel(report);
-    const canAccessResolution = report.escalationStatus === 'in_progress';
+    const canAccessResolution = report.status === 'in_progress';
     const canFinish = canAccessResolution && Boolean(proofFile && completionNotes.trim());
 
     return (<>
@@ -297,7 +352,6 @@ function EmergencyCard({ report, onApprove, onFinish, onSaveDraft }) {
         <div className="grid lg:grid-cols-2">
           <section className="border-b border-red-100 p-6 lg:border-b-0 lg:border-r">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-red-100 px-2.5 py-1 text-xs font-black text-red-700"><Siren className="h-3.5 w-3.5"/> {urgency.label}</span>
               <StatusPill status={report.status}/>
             </div>
             <h3 className="mt-4 text-lg font-black text-slate-900">{report.title}</h3>
@@ -313,7 +367,7 @@ function EmergencyCard({ report, onApprove, onFinish, onSaveDraft }) {
               </div>
               <div>
                 <dt className="text-xs font-bold text-slate-400">Wilayah sesi</dt>
-                <dd className="mt-1 text-xs font-black text-slate-800">{areaLabel}</dd>
+                <dd className="mt-1 text-xs font-black text-slate-800">{admin.areaLabel}</dd>
               </div>
               <div>
                 <dt className="text-xs font-bold text-slate-400">Waktu laporan</dt>
@@ -359,14 +413,26 @@ function EmergencyCard({ report, onApprove, onFinish, onSaveDraft }) {
         Hotline / Kontak Resmi
         <span className="relative mt-1 block">
             <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-red-600"/>
-            <input
+            <select
                 value={hotline}
-                readOnly={!editingDraft}
+                disabled={!editingDraft}
                 onChange={(event) => setHotline(event.target.value)}
-                className={`w-full rounded-xl border border-red-200 py-2.5 pl-10 pr-3 text-sm font-bold text-slate-800 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 ${
+                className={`w-full appearance-none rounded-xl border border-red-200 py-2.5 pl-10 pr-3 text-sm font-bold text-slate-800 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 ${
                     editingDraft ? 'bg-white' : 'bg-slate-50 cursor-default'
                 }`}
-            />
+            >
+                <option value="">
+                    {contactsLoading ? 'Memuat kontak...' : 'Pilih hotline / kontak resmi'}
+                </option>
+                {hotline && !contacts.some((item) => item.phone_number === hotline) && (
+                    <option value={hotline}>Kontak tersimpan: {hotline}</option>
+                )}
+                {contacts.map((contact) => (
+                    <option key={contact.id ?? contact.phone_number} value={contact.phone_number}>
+                        {contact.agency_name} · {contact.phone_number}
+                    </option>
+                ))}
+            </select>
         </span>
     </label>
 
@@ -425,13 +491,15 @@ function EmergencyCard({ report, onApprove, onFinish, onSaveDraft }) {
 )}
 
 <div className="mt-2">
-    {report.status === 'pending' ? (
+    {report.status === 'in_review' ? (
         <button
             type="button"
+            disabled={handling}
             onClick={markHandled}
-            className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2.5 text-xs font-black text-white hover:bg-blue-700"
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2.5 text-xs font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
-            <Send className="h-4 w-4"/> Ditangani
+            {handling ? <LoaderCircle className="h-4 w-4 animate-spin"/> : <Send className="h-4 w-4"/>}
+            {handling ? 'Memproses...' : 'Ditangani'}
         </button>
     ) : (
         <button
@@ -440,7 +508,7 @@ function EmergencyCard({ report, onApprove, onFinish, onSaveDraft }) {
             className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-blue-100 px-3 py-2.5 text-xs font-black text-blue-700"
         >
             <Check className="h-4 w-4"/>
-            {report.status === 'handled' ? 'Selesai' : 'Ditangani'}
+            {report.status === 'resolved' || report.status === 'handled' ? 'Selesai' : 'Ditangani'}
         </button>
     )}
 </div>
@@ -553,161 +621,186 @@ function EmergencyCard({ report, onApprove, onFinish, onSaveDraft }) {
 }
 
 function regionalCluster(report) {
-    return areaLabel;
+    return report.area || report.regionLabel || 'Wilayah tidak diketahui';
 }
 function categoryCluster(report) {
-    return report.aiCategory.split('/')[0].trim();
+    return String(report.aiCategory || report.title || 'Umum')
+        .split('/')[0]
+        .trim() || 'Umum';
 }
 function clusterKey(report) {
     return `${regionalCluster(report).toLowerCase()}|${categoryCluster(report).toLowerCase()}`;
 }
-function CommunityCard({ reports, onApprove, onReject, overridden, recordTimelineActivity, startCommunityHandling }) {
+function CommunityCard({ reports, recordTimelineActivity, startCommunityHandling, communityDrafts, communityDraftsLoaded, saveCommunityDraft, publishCommunityAction }) {
     const report = reports[0];
-    const aksiState = useAksiState();
+    const { aksi } = useAdminAksi();
     const sourceId = reports.map((item) => item.id).join('-');
-    const generatedId = `admin-${sourceId.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
-    const target = 10;
-    const points = overridden ? target : Math.min(target, reports.reduce((sum, item) => sum + item.urgency, 0));
-    const initialRecommendation = report.aiRecommendation.replace(/tantangan/gi, 'aksi').replace(/challenge/gi, 'aksi');
-    const [draft, setDraft] = useState({
+    const reportIds = reports.map((item) => String(item.databaseId || item.id));
+    const publishedAction = aksi.find((action) =>
+        (action.sourceReportIds || []).some((id) => reportIds.includes(String(id)))
+    );
+    const savedDraft = communityDrafts?.[sourceId];
+    const clusterRecommendation = reports
+        .map((item) => item.aiRecommendation)
+        .filter(Boolean)
+        .join(' ');
+    const initialRecommendation = String(
+        clusterRecommendation ||
+        `Aksi komunitas untuk menangani ${reports.map((item) => item.title).join(', ')} di ${incidentLocation(report)}.`
+    ).replace(/tantangan/gi, 'aksi').replace(/challenge/gi, 'aksi');
+    const defaultDraft = {
         name: report.suggestedActionName || `${report.title}`,
         description: initialRecommendation,
-        steps: 'Koordinasikan warga dan petakan titik saluran yang tersumbat.\nSiapkan alat kebersihan, bor biopori, dan perlengkapan keselamatan.\nBersihkan saluran lalu buat lubang biopori pada titik yang disepakati.\nDokumentasikan hasil dan laporkan kepada Ketua PKK.',
+        steps: '',
         participantTarget: '40',
         duration: '2–3 jam',
-        registrationRange: '3–7 November 2026',
-        implementationRange: '8 November 2026',
-    });
-    const [publishedId, setPublishedId] = useState(() => aksiState.aksi.some((aksi) => aksi.id === generatedId) ? generatedId : null);
+        registrationRange: '',
+        implementationRange: '',
+        location: incidentLocation(report),
+        category: categoryCluster(report),
+    };
+    const [draft, setDraft] = useState(() => savedDraft
+        ? { ...defaultDraft, ...savedDraft }
+        : defaultDraft
+    );
+    const [publishedId, setPublishedId] = useState(() => publishedAction ? String(publishedAction.id) : null);
     const [editing, setEditing] = useState(false);
     const [reportsOpen, setReportsOpen] = useState(false);
     const [draftOpen, setDraftOpen] = useState(false);
-
-// State pop-up rekomendasi alternatif
-    const [regenerationOpen, setRegenerationOpen] = useState(false);
-    const [regenerationGuidance, setRegenerationGuidance] = useState('');
-    const [generating, setGenerating] = useState(false);
-    const [alternativeIndex, setAlternativeIndex] = useState(0);
-    const [recommendationHistory, setRecommendationHistory] = useState([]);
-    const publishedAksi = aksiState.aksi.find((aksi) => aksi.id === publishedId);
+    const autoGeneratedRef = useRef(false);
+    const publishedAksi = aksi.find((action) => String(action.id) === String(publishedId));
     const fieldsDisabled = Boolean(publishedId) || !editing;
     function updateDraft(field, value) {
         setDraft((current) => ({ ...current, [field]: value }));
     }
- function generateAlternative() {
-    if (generating || publishedId) return;
 
-    setGenerating(true);
+    useEffect(() => {
+        if (publishedAction && !publishedId) setPublishedId(String(publishedAction.id));
+    }, [publishedAction, publishedId]);
 
-    const isWaste = /sampah|polusi/i.test(report.aiCategory);
+    // Draf tersimpan dipulihkan lebih dulu; RAG hanya jalan jika belum ada draf.
+    useEffect(() => {
+        if (!savedDraft) return;
+        autoGeneratedRef.current = true;
+        setDraft((current) => ({ ...current, ...savedDraft }));
+    }, [savedDraft]);
 
-    const alternatives = isWaste
-        ? [
-            {
-                name: `Gerakan Lingkungan Bersih: ${report.title}`,
-                description: `Program aksi komunitas untuk menangani ${report.title.toLowerCase()} melalui pemetaan titik permasalahan, edukasi warga, dan kegiatan kebersihan bersama.`,
-                steps: 'Petakan lokasi permasalahan dan identifikasi sumber pencemaran.\nKoordinasikan pembagian tugas dan perlengkapan dengan warga.\nLaksanakan kegiatan pembersihan dan edukasi pengelolaan lingkungan.\nDokumentasikan hasil kegiatan dan evaluasi kondisi lingkungan.',
-                participantTarget: '40',
-                duration: '2–3 jam',
-                registrationRange: '10–12 November 2026',
-                implementationRange: '14 November 2026',
-            },
-            {
-                name: `Edukasi dan Pengelolaan Lingkungan: ${report.title}`,
-                description: `Aksi kolaboratif warga untuk mengurangi permasalahan ${report.title.toLowerCase()} melalui edukasi, pengelolaan sampah, dan pemantauan lingkungan secara berkala.`,
-                steps: 'Identifikasi kebiasaan dan sumber permasalahan di lingkungan.\nAdakan sosialisasi kepada warga mengenai pengelolaan lingkungan.\nBentuk pembagian tugas pemantauan dan pengelolaan sampah.\nEvaluasi perubahan kondisi lingkungan bersama warga.',
-                participantTarget: '30',
-                duration: '1–2 jam',
-                registrationRange: '11–13 November 2026',
-                implementationRange: '15 November 2026',
-            },
-        ]
-        : [
-            {
-                name: `Gerakan Pencegahan Lingkungan: ${report.title}`,
-                description: `Aksi bersama warga untuk menangani ${report.title.toLowerCase()} melalui pemetaan lokasi, perbaikan lingkungan, dan langkah pencegahan agar permasalahan tidak berulang.`,
-                steps: 'Petakan titik permasalahan dan tentukan prioritas penanganan.\nKoordinasikan kebutuhan alat dan pembagian tugas warga.\nLaksanakan kegiatan penanganan sesuai kondisi lokasi.\nDokumentasikan hasil dan susun langkah pencegahan.',
-                participantTarget: '40',
-                duration: '2–3 jam',
-                registrationRange: '10–12 November 2026',
-                implementationRange: '14 November 2026',
-            },
-            {
-                name: `Aksi Gotong Royong Warga: ${report.title}`,
-                description: `Kegiatan gotong royong untuk menangani ${report.title.toLowerCase()} dengan melibatkan warga sekitar melalui koordinasi, pembagian tugas, dan pemantauan hasil kegiatan.`,
-                steps: 'Koordinasikan warga dan tentukan lokasi kegiatan.\nIdentifikasi kebutuhan perlengkapan dan tenaga.\nLaksanakan gotong royong sesuai kebutuhan permasalahan.\nEvaluasi hasil kegiatan dan tentukan tindak lanjut.',
-                participantTarget: '25',
-                duration: '1–2 jam',
-                registrationRange: '11–13 November 2026',
-                implementationRange: '15 November 2026',
-            },
-        ];
+  // Draf awal dihasilkan sekali oleh Recommendation System (RAG + LLM).
+  // Tidak ada tombol "rekomendasi lain": hasil pertama langsung bisa diedit Ketua PKK.
+  useEffect(() => {
+    if (!communityDraftsLoaded) return;
+    if (savedDraft || publishedId) return;
 
-    const alternative = alternatives[alternativeIndex % alternatives.length];
+    let cancelled = false;
 
-    setRecommendationHistory((history) => [
-      ...history,
-      {
-          ...draft,
-          version: history.length + 1,
-          savedAt: new
-    Date().toISOString(),
-      },
-    ]);
+    async function generateRecommendation() {
+        const reportText = [
+            ...reports.flatMap((item, index) => [
+                `Laporan ${index + 1}: ${item.title}`,
+                item.details,
+                `Kategori: ${categoryCluster(item)}`,
+                `Lokasi: ${incidentLocation(item)}`,
+            ]),
+            `Wilayah klaster: ${regionalCluster(report)}`,
+        ].filter(Boolean).join('\n');
 
-    setDraft((current) => ({
-        ...current,
-        name: alternative.name,
-        description: alternative.description,
-        steps: alternative.steps,
-        participantTarget: alternative.participantTarget,
-        duration: alternative.duration,
-        registrationRange: alternative.registrationRange,
-        implementationRange: alternative.implementationRange,
-    }));
+        try {
+            const response = await fetch('/api/admin/recommendations', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    report: reportText,
+                    regionId: report.regionId || null,
+                    topK: 2,
+                }),
+            });
 
-    setAlternativeIndex((index) => index + 1);
-    setEditing(false);
-    setDraftOpen(true);
-    setRegenerationOpen(false);
-    setRegenerationGuidance('');
-    setGenerating(false);
-}
-    function publishDraft() {
-    if (report.mockDraft) {
-        setPublishedId('simulation');
+            const result = await response.json();
+
+            if (!response.ok) throw new Error(result.error || 'Gagal membuat rekomendasi');
+
+            const generated = result.draft && typeof result.draft === 'object'
+                ? result.draft
+                : null;
+
+            if (generated) {
+                if (cancelled) return;
+                setDraft((current) => ({
+                    ...current,
+                    ...generated,
+                    steps: generated.steps || current.steps,
+                }));
+                return;
+            }
+
+            const selected = Array.isArray(result.results) ? result.results[0] : null;
+            if (!selected?.kegiatan) return;
+
+            const steps = Array.isArray(selected.langkah)
+                ? selected.langkah.map((step) => String(step).trim()).filter(Boolean).join('\n')
+                : String(selected.langkah || '').trim();
+
+            if (cancelled) return;
+
+            setDraft((current) => ({
+                ...current,
+                name: `${selected.kegiatan}: ${report.title}`,
+                description: `Rekomendasi AI untuk menangani ${reports.map((item) => item.title).join(', ')} di ${incidentLocation(report)}.`,
+                steps: steps || current.steps,
+            }));
+        } catch (error) {
+            console.error('Gagal memuat rekomendasi backend:', error);
+        }
+    }
+
+    generateRecommendation();
+
+    return () => {
+        cancelled = true;
+    };
+}, [sourceId, savedDraft, publishedId, report.regionId, communityDraftsLoaded]);
+    async function saveDraft() {
+    const saved = await saveCommunityDraft?.({
+        clusterKey: sourceId,
+        regionId: report.regionId || null,
+        reportIds,
+        draft: { ...draft, location: incidentLocation(report), category: categoryCluster(report) },
+    });
+
+    if (saved === false) {
+        alert('Gagal menyimpan draf. Silakan coba lagi.');
         return;
     }
 
-    onApprove();
+    setEditing(false);
+    setDraftOpen(true);
+}
 
-    const id = publishCommunityAksi({  
-        sourceId,
-        sourceReportIds: reports.map((item) => item.id),
-        title: draft.name,
-        description: draft.description,
-        steps: draft.steps.split('\n').map((step) => step.trim()).filter(Boolean),
-        participantTarget: Math.max(1, Number(draft.participantTarget) || 1),
-        duration: draft.duration,
-        registrationRange: draft.registrationRange,
-        implementationRange: draft.implementationRange,
-        location: incidentLocation(report),
-        reportCount: reports.length,
-        category: categoryCluster(report),
+    async function publishDraft() {
+    const id = await publishCommunityAction?.({
+        clusterKey: sourceId,
+        regionId: report.regionId || null,
+        reportIds,
+        draft: { ...draft, location: incidentLocation(report), category: categoryCluster(report) },
     });
 
+    if (!id) {
+        alert('Gagal menerbitkan aksi. Silakan coba lagi.');
+        return;
+    }
+
     reports.forEach((item) => {
-    recordTimelineActivity(
-        item.id,
-        'handling',
-        'Aksi komunitas diterbitkan',
-        `Laporan tergabung dalam aksi "${draft.name}" (ID: ${id}).`
-    );
+        recordTimelineActivity(
+            item.id,
+            'handling',
+            'Aksi komunitas diterbitkan',
+            `Laporan tergabung dalam aksi "${draft.name}" (ID: ${id}).`
+        );
 
-    startCommunityHandling(item.id, id, draft.name);
-});
+        startCommunityHandling(item.id, String(id), draft.name);
+    });
 
-setPublishedId(id);
+    setPublishedId(String(id));
 }
     const fieldClass = 'mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:bg-slate-50 disabled:text-slate-500';
 
@@ -716,8 +809,8 @@ setPublishedId(id);
         : editing
             ? { label: 'Sedang diedit', className: 'bg-blue-50 text-blue-700 ring-1 ring-blue-100' }
             : { label: 'Siap diterbitkan', className: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' };
-    function toggleEditing() {
-        setEditing((value) => !value);
+    function startEditing() {
+        setEditing(true);
         setDraftOpen(true);
     }
 
@@ -727,8 +820,7 @@ setPublishedId(id);
                 <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                         <span className="inline-flex items-center gap-1.5 text-xs font-black text-brand-dark"><Users className="h-3.5 w-3.5"/> Jalur B · Aksi Komunitas</span>
-                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700 ring-1 ring-emerald-100">Ambang terpenuhi</span>
-                        {overridden && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-700 ring-1 ring-blue-100">Override Jalur A</span>}
+                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700 ring-1 ring-emerald-100">3 pelapor terpenuhi</span>
                     </div>
                     <h3 className="mt-2 text-base font-black text-slate-900">{draft.name}</h3>
                     <p className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-slate-500"><MapPin className="h-3.5 w-3.5 text-brand"/> {incidentLocation(report)} · {categoryCluster(report)}</p>
@@ -739,7 +831,7 @@ setPublishedId(id);
             <div className="grid items-start gap-4 p-5 lg:grid-cols-2">
                 <section className="overflow-hidden rounded-xl border border-slate-200">
                     <button type="button" onClick={() => setReportsOpen((open) => !open)} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50" aria-expanded={reportsOpen}>
-                        <span className="flex items-center gap-2 text-sm font-black text-slate-800"><FileText className="h-4 w-4 text-brand"/> Daftar Laporan Pembentuk ({points}/{target} Poin)</span>
+                        <span className="flex items-center gap-2 text-sm font-black text-slate-800"><FileText className="h-4 w-4 text-brand"/> Daftar Laporan Pembentuk</span>
                         <span className="flex items-center gap-2">
                             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">{reports.length} laporan</span>
                             <ChevronDown className={cn('h-4 w-4 text-slate-400 transition-transform duration-200', reportsOpen && 'rotate-180')}/>
@@ -755,7 +847,6 @@ setPublishedId(id);
                                             <p className="mt-0.5 text-sm font-black text-slate-800">{item.title}</p>
                                             <p className="mt-1 text-xs text-slate-500">{item.reporter} · {item.date}</p>
                                         </div>
-                                        <span className="shrink-0 rounded-full bg-brand-xlight px-2 py-0.5 font-mono text-xs font-black text-brand-dark">+{item.urgency} poin</span>
                                     </div>
                                     <p className="mt-2 text-xs leading-relaxed text-slate-600">{item.details}</p>
                                     <div className="mt-3 flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-2">
@@ -818,16 +909,7 @@ setPublishedId(id);
                     <div className="flex flex-wrap justify-end gap-2">
     <button
         type="button"
-        onClick={() => setRegenerationOpen(true)}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-brand bg-white px-3.5 py-2 text-xs font-black text-brand-dark hover:bg-brand-xlight"
-    >
-        <Sparkles className="h-3.5 w-3.5" />
-        Buat Rekomendasi Lain
-    </button>
-
-    <button
-        type="button"
-        onClick={toggleEditing}
+        onClick={editing ? saveDraft : startEditing}
         className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-black text-slate-700 hover:bg-slate-50"
     >
         <Pencil className="h-3.5 w-3.5" />
@@ -847,194 +929,87 @@ setPublishedId(id);
                     <span className="inline-flex items-center gap-1.5 text-xs font-black text-brand-dark"><CheckCircle2 className="h-4 w-4"/> Aksi telah diterbitkan</span>
                 )}
             </footer>
-            {regenerationOpen && (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4">
-        <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="regeneration-title"
-            className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl"
-        >
-            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-                <div>
-                    <h3
-                        id="regeneration-title"
-                        className="text-base font-black text-slate-900"
-                    >
-                        Buat Rekomendasi Lain
-                    </h3>
-                    <p className="mt-1 text-xs text-slate-500">
-                        Berikan arahan tambahan jika diperlukan.
-                    </p>
-                </div>
-
-                <button
-                    type="button"
-                    onClick={() => {
-                        setRegenerationOpen(false);
-                        setRegenerationGuidance('');
-                    }}
-                    className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                    aria-label="Tutup pop-up"
-                >
-                    <X className="h-5 w-5" />
-                </button>
-            </div>
-
-            <form
-                onSubmit={(event) => {
-                    event.preventDefault();
-                    generateAlternative();
-                }}
-                className="space-y-4 p-5"
-            >
-                <div>
-                    <label
-                        htmlFor={`guidance-${generatedId}`}
-                        className="text-sm font-bold text-slate-800"
-                    >
-                        Arahan atau Masukan Ketua PKK
-                        <span className="ml-2 text-xs font-medium text-slate-400">
-                            (Opsional)
-                        </span>
-                    </label>
-
-                    <textarea
-                        id={`guidance-${generatedId}`}
-                        value={regenerationGuidance}
-                        onChange={(event) =>
-                            setRegenerationGuidance(event.target.value)
-                        }
-                        rows={4}
-                        placeholder="Contoh: Sesuaikan kegiatan agar lebih sederhana, hemat biaya, dan melibatkan warga sekitar."
-                        className={cn(fieldClass, 'mt-2 resize-none')}
-                        disabled={generating}
-                    />
-
-                    <p className="mt-2 text-xs leading-relaxed text-slate-500">
-                        Arahan akan disimpan sebagai masukan untuk integrasi AI pada tahap berikutnya.
-                        Saat ini rekomendasi masih menggunakan template simulasi.
-                    </p>
-                </div>
-
-                <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setRegenerationOpen(false);
-                            setRegenerationGuidance('');
-                        }}
-                        disabled={generating}
-                        className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
-                    >
-                        Batal
-                    </button>
-
-                    <button
-                        type="submit"
-                        disabled={generating}
-                        className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2.5 text-xs font-black text-white hover:bg-brand-dark disabled:opacity-60"
-                    >
-                        <Sparkles className="h-3.5 w-3.5" />
-                        {generating
-                            ? 'Membuat Rekomendasi...'
-                            : 'Buat Rekomendasi'}
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-)}
         </article>
     );
 }
 
 export default function AIAssistant() {
+    const { areaLabel } = useAdmin();
     const {
     reports,
+    communityDrafts,
+    communityDraftsLoaded,
     approveReport,
     saveEmergencyDraft,
     finalizeReport,
-    acceptRecommendation,
-    rejectRecommendation,
     recordTimelineActivity,
     startCommunityHandling,
+    saveCommunityDraft,
+    publishCommunityAction,
 } = useReportContext();
 
-const actionState = useAksiState();
 const searchParams = useSearchParams();
 
 const [queue, setQueue] = useState(
     searchParams.get('queue') === 'emergency' ? 'emergency' : 'community'
 );
 
-// Hanya laporan yang sudah diterima/di-override di Dashboard
-// dan belum memiliki keputusan rekomendasi AI.
+// Jalur final ditentukan Ketua PKK di Dashboard, bukan rekomendasi AI.
+// Hanya laporan yang sudah diterima yang masuk antrean Asisten AI.
 const eligibleReports = reports.filter((report) =>
-    ['accepted', 'overridden'].includes(report.dashboardDecision) &&
-    report.status !== 'rejected' &&
-    report.status !== 'handled' &&
+    report.dashboardDecision === 'accepted' &&
+    !['rejected', 'resolved', 'handled'].includes(report.status) &&
     !report.recommendationDecision
 );
 
-// Jalur A: rute aktual BPBD
+// Jalur A: laporan darurat yang diterima dan sedang/akan ditangani.
 const emergencyReports = eligibleReports.filter(
-    (report) => report.handledBy === 'bpbd'
+    (report) =>
+        report.dashboardRoute === 'emergency' &&
+        ['in_review', 'in_progress'].includes(report.status)
 );
 
-// Jalur B: rute aktual komunitas
+// Jalur B: laporan yang masih berada di tabungan aksi (belum diterbitkan).
+// Setelah diterbitkan, statusnya in_progress dan ditampilkan di Manajemen Aksi.
 const communityReports = eligibleReports.filter(
-    (report) => report.handledBy === 'community'
+    (report) =>
+        report.dashboardRoute === 'community' &&
+        report.status === 'in_review'
 );
 
+// Klaster berdasarkan kategori laporan dan wilayah.
 const allCommunityClusters = Array.from(
     communityReports.reduce((clusters, report) => {
-        const key = report.dashboardDecision ===
-        'overridden' &&
-             report.dashboardRoute ===
-        'community' &&
-             report.overrideFrom === 'bpbd'
-            ? `override-${report.id}`
-            : clusterKey(report);
-
+        const key = clusterKey(report);
         const current = clusters.get(key) || [];
         current.push(report);
         clusters.set(key, current);
-
         return clusters;
     }, new Map()).values()
 );
 
 const maturedClusters = allCommunityClusters.filter((cluster) => {
-    const isEmergencyOverride = cluster.some(
-        (report) =>
-            report.dashboardDecision === 'overridden' &&
-            report.dashboardRoute === 'community' &&
-            report.overrideFrom === 'bpbd'
-    );
-
-    if (isEmergencyOverride) return true;
-
-    const totalPoints = cluster.reduce(
-        (sum, report) => sum + (Number(report.urgency) || 0),
-        0
-    );
-
     const uniqueReporters = new Set(
         cluster
-            .map((report) => report.reporter?.trim().toLowerCase())
+            .map((report) => report.userId || report.reporter?.trim().toLowerCase())
             .filter(Boolean)
     ).size;
 
-    return totalPoints >= 10 && uniqueReporters >= 3;
+    return uniqueReporters >= 3;
 });
 
 const readyClusters = maturedClusters;
-    
+
+const publishedActionIds = new Set(
+    reports
+        .filter((report) => report.dashboardRoute === 'community' && report.communityActionId)
+        .map((report) => String(report.communityActionId))
+);
+
     const metrics = [
         { label: 'Total Dianalisis', value: reports.length, icon: Bot, tone: 'bg-slate-100 text-slate-700' },
-        { label: 'Siap Diterbitkan', value: readyClusters.filter((cluster) => !actionState.aksi.some((aksi) => aksi.id === `admin-${cluster.map((item) => item.id).join('-').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`)).length, icon: Sparkles, tone: 'bg-amber-100 text-amber-800' },
-        { label: 'Aksi Diterbitkan', value: actionState.aksi.filter((aksi) => aksi.id.startsWith('admin-')).length, icon: CheckCircle2, tone: 'bg-brand-light text-brand' },
+        { label: 'Siap Diterbitkan', value: readyClusters.length, icon: Sparkles, tone: 'bg-amber-100 text-amber-800' },
+        { label: 'Aksi Diterbitkan', value: publishedActionIds.size, icon: CheckCircle2, tone: 'bg-brand-light text-brand' },
         { label: 'Jalur Darurat', value: emergencyReports.length, icon: Siren, tone: 'bg-red-100 text-red-700' },
     ];
 
@@ -1091,14 +1066,12 @@ const readyClusters = maturedClusters;
             <CommunityCard
                 key={cluster[0].id}
                 reports={cluster}
-                onApprove={() =>
-                    cluster.forEach((item) => acceptRecommendation(item.id))
-                }
-                onReject={(reason) =>
-                    cluster.forEach((item) => rejectRecommendation(item.id, reason))
-                }
                 recordTimelineActivity={recordTimelineActivity}
                 startCommunityHandling={startCommunityHandling}
+                communityDrafts={communityDrafts}
+                communityDraftsLoaded={communityDraftsLoaded}
+                saveCommunityDraft={saveCommunityDraft}
+                publishCommunityAction={publishCommunityAction}
             />
         ))
     }

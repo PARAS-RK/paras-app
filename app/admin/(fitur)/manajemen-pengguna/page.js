@@ -9,14 +9,14 @@ export const instant = false;
 export const metadata = { title: "Manajemen Pengguna | PARAS" };
 
 export default async function UserManagementPage() {
-  const admin = await getAdminSession();
-  if (!admin) redirect("/admin/login");
+    const admin = await getAdminSession();
+    if (!admin) redirect("/admin/login");
 
-  const { users, registrations, error } = await getManagedUsers(admin);
+    const data = await getManagedUsers(admin);
 
-  return (
-    <UsersProvider users={users} registrations={registrations} loadError={error}>
-      <UserManagement />
-    </UsersProvider>
-  );
+    return (
+        <UsersProvider users={data.users} registrations={data.registrations} loadError={data.error}>
+            <UserManagement />
+        </UsersProvider>
+    );
 }

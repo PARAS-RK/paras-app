@@ -2,7 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Mail, MapPin, Phone } from 'lucide-react';
 
-import logo from '../../public/logo_paras_1.png';
+import logo from '@/public/logo.svg';
 
 const socials = [
   {
@@ -45,7 +45,10 @@ export default function Footer() {
       <div className="mx-auto grid max-w-5xl grid-cols-2 gap-x-6 gap-y-8 px-5 py-8 lg:grid-cols-[1.4fr_0.8fr_0.7fr_1fr] lg:gap-8 lg:px-8 lg:py-12">
         {/* Brand + sosmed */}
         <div className="col-span-2 lg:col-span-1">
-          <Image src={logo} alt="PARAS" style={{ width: 'auto' }} className="h-9" />
+          <div className="flex items-center gap-2">
+            <Image src={logo} alt="PARAS" style={{ width: 'auto' }} className="h-9" />
+            <p className="text-xl font-bold text-gray-800">Paras</p>
+          </div>
           <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted-foreground">Platform perempuan untuk aksi iklim dan respons bencana berbasis komunitas.</p>
           <div className="mt-5 flex items-center gap-2">
             {socials.map((s) => (

@@ -1,42 +1,17 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Camera, CheckCircle2, ChevronDown, ChevronUp, ClipboardList, Clock3, Eye, FileCheck2, MapPin, ShieldCheck, Siren, Target, Users, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useReportContext } from '@/context/ReportContext';
-import { pct, useAksiState } from '@/lib/aksiStore';
-import { areaLabel } from '@/lib/currentUser';
+import { useAdminAksi } from '@/lib/adminAksi';
 import { archivedSeed } from './ActionManagement';
 
-const emergencySeed = [
-    {
-        id: 'LP-2026-074',
-        title: 'Pohon Tumbang Menutup Jalan RW 05',
-        category: 'Infrastruktur Darurat',
-        location: 'RW 05, Kel. Kebayoran Baru',
-        reporter: 'Ibu Sari Wulandari',
-        details: 'Pohon besar tumbang setelah angin kencang dan menutup akses utama warga di RW 05.',
-        resolution: 'Tim kelurahan dan petugas terkait telah mengevakuasi pohon. Akses jalan kembali normal.',
-        fieldNote: 'Pohon dievakuasi dari badan jalan dan area dibersihkan. Tidak ditemukan kerusakan lanjutan pada jaringan listrik.',
-        verificationLogs: ['15.55 · Petugas lapangan mengunggah dokumentasi', '16.20 · Ketua RW mengonfirmasi akses telah terbuka', '16.40 · Ketua PKK menutup laporan'],
-        status: 'handled',
-        closedAt: '20 Okt 2026 · 16.40 WIB',
-    },
-    {
-        id: 'LP-2026-068',
-        title: 'Dugaan Kebocoran Gas di RT 07',
-        category: 'Keselamatan Lingkungan',
-        location: 'RT 07 / RW 01, Kel. Kebayoran Baru',
-        reporter: 'Bapak Ahmad Fauzi',
-        resolution: 'Laporan ditolak setelah pemeriksaan lapangan tidak menemukan kebocoran atau sumber bahaya.',
-        fieldNote: 'Tim melakukan pemeriksaan sambungan gas dan pengukuran udara. Tidak ada indikasi kebocoran di lokasi.',
-        verificationLogs: ['09.35 · Petugas tiba di lokasi', '09.50 · Pemeriksaan lapangan selesai', '10.15 · Hasil pemeriksaan diverifikasi'],
-        status: 'rejected',
-        closedAt: '14 Okt 2026 · 10.15 WIB',
-    },
-];
+const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+
 
 const communityResidentNames = [
     ['Ibu Ratna Sari', 'Koordinator PKK'],
@@ -132,7 +107,7 @@ function CommunityArchiveCard({ item }) {
                     <div className="mt-3 space-y-2">
                         <p className="flex items-center justify-between gap-3 text-xs"><span className="flex items-center gap-1.5 font-semibold text-slate-500"><Users className="h-3.5 w-3.5"/> Partisipasi</span><span className="font-black text-slate-800">{item.participants}/{item.quota}</span></p>
                         <p className="flex items-center justify-between gap-3 text-xs"><span className="flex items-center gap-1.5 font-semibold text-slate-500"><Target className="h-3.5 w-3.5"/> Dampak akhir</span><span className="max-w-40 text-right font-black text-slate-800">{item.impact}</span></p>
-                        <p className="flex items-center justify-between gap-3 text-xs"><span className="flex items-center gap-1.5 font-semibold text-slate-500"><Clock3 className="h-3.5 w-3.5"/> Diselesaikan</span><span className="text-right font-black text-slate-800">{item.closedAt}</span></p>
+                        <p className="flex items-center justify-between gap-3 text-xs"><span className="flex items-center gap-1.5 font-semibold text-slate-500"><Clock3 className="h-3.5 w-3.5"/> Diselesaikan</span><span className="text-right font-black text-slate-800">{formatArchiveDateTime(item.closedAt)}</span></p>
                     </div>
                     <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-200 pt-3">
                         <span className="inline-flex items-center gap-1 rounded-full bg-brand-light px-2 py-1 text-xs font-black text-brand-dark"><FileCheck2 className="h-3.5 w-3.5"/> Terverifikasi</span>
@@ -230,17 +205,89 @@ function CommunityArchiveCard({ item }) {
         </article>
     );
 }
+const formatArchiveDateTime = (value) => {
+    if (!value) return 'Waktu tidak tercatat';
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return 'Waktu tidak tercatat';
+    }
+
+    return date.toLocaleString('id-ID', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'Asia/Jakarta',
+    });
+};
 
 function EmergencyArchiveCard({ item }) {
     const [expanded, setExpanded] = useState(false);
     const [detailsOpen, setDetailsOpen] = useState(false);
-    const resolutionPhoto = item.photos?.[0] || communityProofPhotos[0];
-    const residentPhoto = item.residentPhoto || communityProofPhotos[1];
-    const verificationLogs = item.verificationLogs || [
-        `Hotline 112 menerima eskalasi untuk ${item.location}`,
-        'Petugas lapangan mengonfirmasi penanganan di lokasi',
-        `${item.closedAt} · Bukti dan catatan diverifikasi Ketua PKK`,
-    ];
+    const [photoPreviewOpen, setPhotoPreviewOpen] = useState(false);
+    const [resolutionPhoto, setResolutionPhoto] = useState(null);
+
+useEffect(() => {
+    let cancelled = false;
+
+    const loadResolutionPhoto = async () => {
+        if (!item.proofPath) {
+            setResolutionPhoto(item.photos?.[0] || null);
+            return;
+        }
+
+        const supabase = createClient();
+
+        const { data, error } = await supabase
+            .storage
+            .from('bukti-laporan')
+            .createSignedUrl(item.proofPath, 3600);
+
+        if (cancelled) return;
+
+        if (error) {
+            console.error('Gagal mengambil foto penyelesaian:', error);
+            setResolutionPhoto(null);
+            return;
+        }
+
+        setResolutionPhoto(data?.signedUrl || null);
+    };
+
+    loadResolutionPhoto();
+
+    return () => {
+        cancelled = true;
+    };
+}, [item.proofPath]);
+    const residentPhoto = item.residentPhoto || null;
+    const activityLabels = {
+    draft_saved: 'Draft eskalasi disimpan',
+    handling_started: 'Penanganan dimulai',
+    resolved: 'Penanganan selesai',
+};
+
+const seenActivities = new Set();
+
+const verificationLogs = (item.timeline || [])
+    .filter((log) => {
+        if (log.type !== 'handling_started') return true;
+
+        if (seenActivities.has(log.type)) return false;
+
+        seenActivities.add(log.type);
+        return true;
+    })
+    .map((log) => ({
+        id: log.id,
+        title: activityLabels[log.type] || log.type,
+        description: log.description,
+        timestamp: log.timestamp,
+    }));
     return (
         <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="flex items-center justify-between gap-3 border-b border-brand-light bg-brand-xlight px-5 py-3 sm:px-6">
@@ -255,7 +302,8 @@ function EmergencyArchiveCard({ item }) {
                         <span className="font-mono text-xs font-bold text-slate-400">#{item.id}</span>
                     </div>
                     <h2 className="mt-3 text-lg font-black leading-snug text-slate-900">{item.title}</h2>
-                    <p className="mt-2 flex items-start gap-1.5 text-sm font-bold text-slate-700"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-brand"/> {item.location}</p>
+                    <p className="mt-2 flex items-start gap-1.5 text-sm font-bold text-slate-700"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-brand"/> {item.regionLabel}</p>
+                    <p className="mt-2 flex items-start gap-1.5 text-xs font-semibold text-slate-500"> Lokasi Kejadian: {item.location} </p>
                     <dl className="mt-4 grid grid-cols-2 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
                         <div>
                             <dt className="text-xs font-bold text-slate-400">Pelapor</dt>
@@ -279,7 +327,11 @@ function EmergencyArchiveCard({ item }) {
                                     <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-600">{item.details || 'Laporan awal warga telah diverifikasi dan diteruskan melalui jalur darurat.'}</p>
                                 </div>
                                 <figure className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                                    {residentPhoto ? (
                                     <img src={residentPhoto} alt={`Bukti awal warga untuk ${item.title}`} className="aspect-video w-full object-cover"/>
+                                    ) : (
+                                        <div className="flex aspect-video items-center justify-center bg-slate-50 text-sm font-semibold text-slate-400"> Belum ada foto laporan warga </div>
+                                    )}
                                     <figcaption className="flex items-center justify-between gap-3 bg-white p-3">
                                         <span className="text-xs font-semibold text-slate-600">Bukti foto warga · kondisi awal</span>
                                         <span className="font-mono text-xs text-slate-400">#{item.id}</span>
@@ -299,11 +351,11 @@ function EmergencyArchiveCard({ item }) {
                     <div className="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
                         <div>
                             <p className="text-xs font-bold text-slate-400">Jalur eskalasi</p>
-                            <p className="mt-1 text-xs font-black text-slate-800">Hotline 112 · BPBD Jakarta Selatan</p>
+                            <p className="mt-1 text-xs font-black text-slate-800">{item.emergencyHotline || '-'}</p>
                         </div>
                         <div>
                             <p className="text-xs font-bold text-slate-400">Waktu selesai</p>
-                            <p className="mt-1 text-xs font-black text-slate-800">{item.closedAt}</p>
+                            <p className="mt-1 text-xs font-black text-slate-800">{formatArchiveDateTime(item.closedAt)}</p>
                         </div>
                     </div>
                     <button type="button" onClick={() => setExpanded((open) => !open)} className="mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-black text-slate-700 transition-colors hover:bg-slate-50" aria-expanded={expanded}>
@@ -317,13 +369,45 @@ function EmergencyArchiveCard({ item }) {
                     <section>
                         <div className="flex items-center justify-between gap-3">
                             <h3 className="text-sm font-black text-slate-900">Bukti Foto Penyelesaian</h3>
-                            <span className="text-xs font-black text-brand">Terverifikasi</span>
                         </div>
                         <figure className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white">
-                            <img src={resolutionPhoto} alt={`Bukti penyelesaian ${item.title}`} className="aspect-video w-full object-cover"/>
+                            {resolutionPhoto ? (
+    <img
+        src={resolutionPhoto}
+        alt={`Bukti penyelesaian ${item.title}`}
+        onClick={() => setPhotoPreviewOpen(true)}
+        className="aspect-video w-full cursor-zoom-in object-cover"
+    />
+) : (
+    <div className="flex aspect-video items-center justify-center bg-slate-50 text-sm font-semibold text-slate-400">
+        Belum ada foto penyelesaian
+    </div>
+)}
+
+{photoPreviewOpen && resolutionPhoto && (
+    <div
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4"
+        onClick={() => setPhotoPreviewOpen(false)}
+    >
+        <button
+            type="button"
+            onClick={() => setPhotoPreviewOpen(false)}
+            className="absolute right-5 top-5 rounded-full bg-white/20 p-2 text-white hover:bg-white/30"
+        >
+            <X className="h-6 w-6" />
+        </button>
+
+        <img
+            src={resolutionPhoto}
+            alt={`Bukti penyelesaian ${item.title}`}
+            onClick={(event) => event.stopPropagation()}
+            className="max-h-[90vh] max-w-full rounded-lg object-contain"
+        />
+    </div>
+)}
                             <figcaption className="flex items-center justify-between gap-3 p-3">
                                 <span className="truncate text-xs font-semibold text-slate-600">{item.proofName || 'Bukti penanganan akhir'}</span>
-                                <time className="shrink-0 text-xs font-bold text-slate-400">{item.closedAt}</time>
+                                <time className="shrink-0 text-xs font-bold text-slate-400">{formatArchiveDateTime(item.closedAt)}</time>
                             </figcaption>
                         </figure>
                     </section>
@@ -332,11 +416,25 @@ function EmergencyArchiveCard({ item }) {
                         <h3 className="flex items-center gap-2 text-sm font-black text-slate-900"><Clock3 className="h-4 w-4 text-brand"/> Jejak Eskalasi Resmi</h3>
                         <div className="mt-3 space-y-2">
                             {verificationLogs.map((log) => (
-                                <div key={log} className="flex items-start gap-2 rounded-xl border border-slate-200 bg-white p-3">
-                                    <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand"/>
-                                    <p className="text-xs font-semibold leading-relaxed text-slate-600">{log}</p>
-                                </div>
-                            ))}
+    <div
+        key={log.id}
+        className="rounded-xl border border-slate-200 bg-white p-3"
+    >
+        <div className="flex items-start gap-2">
+            <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand" />
+
+            <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-800">
+                    {log.title} · {formatArchiveDateTime(log.timestamp)}
+                </p>
+
+                <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-600">
+                    {log.description}
+                </p>
+            </div>
+        </div>
+    </div>
+))}
                         </div>
                     </section>
                 </div>
@@ -444,38 +542,37 @@ export default function HandlingArchive() {
 
     const activeTab = searchParams.get('tab') === 'community' ? 'community' : 'emergency';
     const { reports } = useReportContext();
-    const { aksi } = useAksiState();
-    const exactLocations = {
-    'LP-2024-089': `Depan RT 04 / RW 05, ${areaLabel}`,
-    'LP-2024-088': `Permukiman RT 04 / RW 05, ${areaLabel}`,
-    'LP-2024-087': `Area usaha RW 05, ${areaLabel}`,
-    'LP-2024-086': `Jl. Melati RW 03, ${areaLabel}`,
-    'LP-2024-085': `Lahan kosong RT 05 / RW 05, ${areaLabel}`,
-    'LP-2024-082': `RT 02 / RT 04 / RT 05, ${areaLabel}`,
-};
+    const { aksi } = useAdminAksi();
+
     const archivedReports = reports
-        .filter((report) => report.handledBy === 'bpbd' && report.status === 'handled')
+        .filter((report) =>
+            report.handledBy === 'bpbd' &&
+            ['resolved', 'handled'].includes(report.status) &&
+            report.dashboardRoute !== 'community'
+        )
         .map((report) => ({
             id: report.id,
             title: report.title,
             details: report.details,
             category: report.aiCategory,
-            location: exactLocations[report.id] || report.location || areaLabel,
+            location: report.locationDetail || 'Lokasi belum tersedia',
+            regionLabel: report.regionLabel || 'Wilayah tidak diketahui',
             reporter: report.reporter,
             resolution: report.publicMessage || 'Laporan darurat telah selesai ditangani.',
             fieldNote: report.completionNotes || report.publicMessage || 'Lokasi telah diamankan dan penanganan dinyatakan tuntas.',
             proofName: report.proofName,
+            proofPath: report.proofPath || null,
             photos: report.resolutionPhoto ? [report.resolutionPhoto] : [],
-            verificationLogs: (report.timeline || []).map((item) =>
-    `${item.label}${item.description ? ` · ${item.description}` : ''} · ${item.timestamp}`
-),
+            timeline: report.timeline || [],
+            emergencyHotline: report.emergencyHotline || null,
             status: report.status,
             archiveType: 'emergency',
             closedAt: report.completedAt || report.date,
         }));
-    const emergencyHistory = [...archivedReports, ...emergencySeed]
-        .filter((item) => item.status === 'handled')
-        .map((item) => ({ ...item, archiveType: 'emergency' }));
+    const emergencyHistory = archivedReports.map((item) => ({
+        ...item,
+        archiveType: 'emergency',
+    }));
     const completedActions = aksi.filter((action) => action.status === 'selesai');
     const formatLogTime = (value) =>
     value

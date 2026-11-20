@@ -33,6 +33,7 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env files (can opt-in for committing if needed)
+.venv/
 .env
 .env.local
 .env.*.local
@@ -44,6 +45,11 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-__pycache__/
+#backend
 *.pyc
 .venv/
+
+#database
+__pycache__/
+backend/data/chroma/
+
