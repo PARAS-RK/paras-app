@@ -1,30 +1,43 @@
+from .config import SUPABASE_MATCH_FUNCTION
 from .embedding import embed_query
-from .indexing import get_collection
+from .indexing import get_supabase
 
 
-def retrieve_context(question: str, top_k: int = 4) -> list[dict]:
-    collection = get_collection()
-    if collection.count() == 0:
+def retrieve_context(
+    question: str, top_k: int = 4, match_threshold: float = 0.3
+) -> list[dict]:
+    supabase = get_supabase()
+    query_vector = embed_query(question, prefix="query: ")
+
+    response = supabase.rpc(
+        SUPABASE_MATCH_FUNCTION,
+        {
+            "query_embedding": query_vector,
+            "match_threshold": match_threshold,
+            "match_count": top_k,
+        },
+    ).execute()
+
+    rows = response.data or []
+    if not rows:
         return []
 
-    result = collection.query(
-        query_embeddings=[embed_query(question, prefix="query: ")],
-        n_results=min(top_k, collection.count()),
-        include=["documents", "metadatas", "distances"],
-    )
-    docs = result.get("documents", [[]])[0]
-    metas = result.get("metadatas", [[]])[0]
-    dists = result.get("distances", [[]])[0]
+    results = []
+    for row in rows:
+        meta = row.get("metadata") or {}
+        similarity = row.get("similarity")
+        results.append(
+            {
+                "text": row.get("content", ""),
+                "source": meta.get("source", "dokumen"),
+                "title": meta.get("title", "Buku Panduan Bencana"),
+                "page": meta.get("halaman", meta.get("page", "-")),
+                "fase": meta.get("fase", "umum"),
+                "heading": meta.get("heading", "Umum"),
+                "relevance_score": (
+                    round(float(similarity), 3) if similarity is not None else 0.0
+                ),
+            }
+        )
 
-    return [
-        {
-            "text": text,
-            "source": meta.get("source", "dokumen"),
-            "title": meta.get("title", "Buku Panduan Bencana"),
-            "page": meta.get("halaman", meta.get("page", "-")),
-            "fase": meta.get("fase", "umum"),
-            "heading": meta.get("heading", "Umum"),
-            "relevance_score": round(1 - float(dist), 3),
-        }
-        for text, meta, dist in zip(docs, metas, dists)
-    ]
+    return results

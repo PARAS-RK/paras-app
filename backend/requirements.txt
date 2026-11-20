@@ -6,8 +6,6 @@ pymupdf
 openpyxl
 scikit-learn
 sentence-transformers
-chromadb
 google-genai
 requests
 supabase
-

@@ -41,7 +41,11 @@ def main():
     chunks = buat_chunks(raw_pages)
     if not chunks:
         chunks = [
-            {"text": c, "source": p["filename"], "meta": {"source": p["filename"], "halaman": p["page"]}}
+            {
+                "text": c,
+                "source": p["filename"],
+                "meta": {"source": p["filename"], "halaman": p["page"]},
+            }
             for p in raw_pages
             for c in chunk_text(p["text"], CHUNK_SIZE, CHUNK_OVERLAP)
         ]
@@ -51,12 +55,14 @@ def main():
         return
 
     if args.stage == "embedding":
-        vectors = embed_texts([c.get("embed_text", c["text"]) for c in chunks], prefix="passage: ")
+        vectors = embed_texts(
+            [c.get("embed_text", c["text"]) for c in chunks], prefix="passage: "
+        )
         print(f"Embedding selesai: {len(vectors)} vektor")
         return
 
     total = index_chunks(chunks)
-    print(f"Halaman: {len(raw_pages)} | Chunk diindeks ke ChromaDB: {total}")
+    print(f"Halaman: {len(raw_pages)} | Chunk diindeks ke Supabase pgvector: {total}")
 
 
 if __name__ == "__main__":
