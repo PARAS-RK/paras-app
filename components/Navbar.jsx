@@ -8,6 +8,7 @@ import { usePathname } from 'next/navigation';
 import { Bell } from 'lucide-react';
 import { cn } from '../lib/utils';
 import logo from '../public/logo.svg';
+import NotificationBell from '../components/NotificationBell';
 
 const links = [
   { href: '/home', label: 'Beranda' },
@@ -39,12 +40,8 @@ function NavbarContent() {
               );
             })}
           </nav>
-
           {/* Tombol Notifikasi */}
-          <button className="relative ml-2 flex h-10 w-10 items-center justify-center rounded-full foreground-600 transition-colors hover:bg-gray-100">
-            <Bell className="h-5 w-5" />
-            <span className="absolute right-2 top-2 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white bg-[color-pink] text-[9px] font-bold text-white">3</span>
-          </button>
+          <NotificationBell />
         </div>
       </div>
     </header>

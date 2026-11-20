@@ -10,12 +10,10 @@ export async function GET(request) {
   const type = searchParams.get('type');
   let next = searchParams.get('next') ?? '/reset-password';
 
-  // Cegah open redirect: hanya izinkan path internal
   if (!next.startsWith('/') || next.startsWith('//')) {
     next = '/reset-password';
   }
 
-  // Gunakan domain dari environment variable
   const siteUrl = process.env.SITE_URL || request.nextUrl.origin;
 
   if (tokenHash && ALLOWED_TYPES.includes(type)) {
