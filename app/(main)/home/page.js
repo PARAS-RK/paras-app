@@ -7,11 +7,46 @@ import { AlertTriangle, ArrowRight, Award, ChevronRight, CloudRain, CloudLightni
 
 import { Card, CardContent } from '../../../components/ui/card';
 import { Progress } from '../../../components/ui/progress';
+import { useWilayah } from '@/lib/hooks/info/useWilayah';
+import { useBmkg } from '@/lib/hooks/info/useBmkg';
+import { useCuaca, usePeringatan } from '@/lib/hooks/info/useBmkgCards';
+import { IkonCuaca } from '@/components/info/Ikon';
+
+// Warna banner: oranye (desain asli) dipakai saat ada peringatan dini aktif
+const NADA = {
+  ada: {
+    kartu: 'border-orange-200 bg-orange-50/80 hover:bg-orange-100/80',
+    ikon: 'bg-orange-200 text-orange-700',
+    judul: 'text-orange-950',
+    sub: 'text-orange-800',
+    panah: 'text-orange-400',
+  },
+  aman: {
+    kartu: 'border-sky-200 bg-sky-50/80 hover:bg-sky-100/80',
+    ikon: 'bg-sky-200 text-sky-700',
+    judul: 'text-sky-950',
+    sub: 'text-sky-800',
+    panah: 'text-sky-400',
+  },
+  tidak_pasti: {
+    kartu: 'border-slate-200 bg-slate-50/80 hover:bg-slate-100/80',
+    ikon: 'bg-slate-200 text-slate-700',
+    judul: 'text-slate-950',
+    sub: 'text-slate-700',
+    panah: 'text-slate-400',
+  },
+};
 
 export default function Home() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
+
+  // Data BMKG (provider ada di app/(main)/layout.js)
+  const { status: statusWilayah } = useWilayah();
+  const { status: statusBmkg } = useBmkg();
+  const peringatan = usePeringatan();
+  const cuaca = useCuaca();
 
   // Ambil profil dan statistik aktivitas dari /api/home
   useEffect(() => {
@@ -61,6 +96,41 @@ export default function Home() {
   const current = s.activeAction;
   const pct = (a, b) => (b ? Math.min(100, Math.round((a / b) * 100)) : 0);
 
+  // ---- Data BMKG untuk banner dan tile cuaca ----
+  const tanpaWilayah = statusWilayah === 'tanpa_wilayah' || statusWilayah === 'error';
+  const bmkgMemuat = statusWilayah === 'loading' || (statusWilayah === 'siap' && statusBmkg === 'loading');
+
+  const adaPeringatan =
+    !bmkgMemuat && !tanpaWilayah && peringatan.status === 'ada' && peringatan.items.length > 0;
+  const peringatanTidakPasti =
+    tanpaWilayah || (!bmkgMemuat && peringatan.status === 'tidak_pasti');
+  const nada = NADA[adaPeringatan ? 'ada' : peringatanTidakPasti ? 'tidak_pasti' : 'aman'];
+
+  let judulPeringatan = 'Tidak ada peringatan dini cuaca';
+  let subPeringatan = 'Pantau informasi cuaca dan bencana BMKG';
+  if (bmkgMemuat) {
+    judulPeringatan = 'Memuat info peringatan dini...';
+  } else if (tanpaWilayah) {
+    judulPeringatan = 'Wilayah belum diatur';
+    subPeringatan = 'Atur wilayah untuk melihat info cuaca dan bencana';
+  } else if (adaPeringatan) {
+    judulPeringatan = peringatan.items[0].judul;
+    subPeringatan = `Berlaku sampai ${peringatan.items[0].berakhir}`;
+  } else if (peringatanTidakPasti) {
+    judulPeringatan = 'Peringatan dini belum bisa dipastikan';
+    subPeringatan = 'Cek langsung di bmkg.go.id';
+  }
+
+  const cuacaAda = !bmkgMemuat && !tanpaWilayah && cuaca.status !== 'tidak_pasti' && cuaca.suhu != null;
+  const suhuCuaca = cuacaAda ? `${cuaca.suhu}°C` : '—';
+  const kondisiCuaca = bmkgMemuat
+    ? 'Memuat...'
+    : tanpaWilayah
+      ? 'Wilayah belum diatur'
+      : cuacaAda
+        ? cuaca.kondisi
+        : 'Belum bisa dipastikan';
+
   const tiles = [
     current
       ? {
@@ -98,13 +168,13 @@ export default function Home() {
       sub: 'Total poin aksi',
     },
     {
-      // Statis sementara
       to: '/info',
-      icon: CloudRain,
+      icon: CloudRain, // cadangan saat data belum ada
+      ikonNode: cuacaAda ? <IkonCuaca url={cuaca.ikon} kondisi={cuaca.kondisi} ukuran="h-7 w-7" /> : null,
       tone: 'text-sky-600 bg-sky-100',
       label: 'Info Cuaca',
-      value: '26°C',
-      sub: 'Hujan Ringan',
+      value: suhuCuaca,
+      sub: kondisiCuaca,
     },
   ];
 
@@ -135,21 +205,24 @@ export default function Home() {
 
       {/* 2. Main Content Container */}
       <div className="mx-auto w-full max-w-5xl space-y-4 px-4 py-6 lg:space-y-6 lg:px-10 lg:py-8 -mt-6 relative z-10">
-        {/* Banner Cuaca (Peringatan Dini) - statis sementara */}
+        {/* Banner Peringatan Dini BMKG -> Link ke /info */}
         <Link href="/info" className="block group">
-          <Card className="border-orange-200 bg-orange-50/80 backdrop-blur-sm shadow-sm transition-all hover:shadow-md hover:bg-orange-100/80 rounded-lg">
+          <Card className={`${nada.kartu} backdrop-blur-sm shadow-sm transition-all hover:shadow-md rounded-lg`}>
             <CardContent className="flex items-center gap-4 p-4 lg:p-5">
-              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-orange-200 text-orange-700">
+              <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${nada.ikon}`}>
                 <AlertTriangle className="h-6 w-6" aria-hidden />
               </span>
               <div className="min-w-0 flex-1">
-                <p className="text-base font-bold text-orange-950">Potensi hujan lebat, 15.00–16.00</p>
-                <div className="mt-1 flex items-center gap-1.5 text-sm text-orange-800">
-                  <CloudLightning className="h-4 w-4" aria-hidden />
-                  <span>Hujan disertai petir</span>
+                <p className={`truncate text-base font-bold ${nada.judul}`}>{judulPeringatan}</p>
+                <div className={`mt-1 flex items-center gap-1.5 text-sm ${nada.sub}`}>
+                  <CloudLightning className="h-4 w-4 shrink-0" aria-hidden />
+                  <span className="truncate">{subPeringatan}</span>
                 </div>
               </div>
-              <ChevronRight className="h-5 w-5 shrink-0 text-orange-400 transition-transform group-hover:translate-x-1" aria-hidden />
+              <ChevronRight
+                className={`h-5 w-5 shrink-0 transition-transform group-hover:translate-x-1 ${nada.panah}`}
+                aria-hidden
+              />
             </CardContent>
           </Card>
         </Link>
@@ -180,7 +253,7 @@ export default function Home() {
                   <CardContent className="flex flex-col p-5">
                     <div className="flex items-center justify-between">
                       <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${t.tone}`}>
-                        <Icon className="h-5 w-5" aria-hidden />
+                        {t.ikonNode ?? <Icon className="h-5 w-5" aria-hidden />}
                       </span>
                       <ChevronRight className="h-4 w-4 text-gray-400 transition-transform group-hover:translate-x-1" aria-hidden />
                     </div>

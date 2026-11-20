@@ -4,10 +4,10 @@ WIB = timezone(timedelta(hours=7))
 
 # detik sebelum data dianggap basi -> expired_at
 BASI = {
-    "cuaca": 4 * 3600,
-    "peringatan": 30 * 60,
-    "gempa_rasa": 60 * 60,
-    "gempa_besar": 60 * 60,
+    "cuaca": 5 * 3600,          # 5 jam (cron tiap 3 jam, sisa 2 jam untuk telat)
+    "peringatan": 60 * 60,      # 60 menit
+    "gempa_rasa": 3 * 3600,     # 3 jam
+    "gempa_besar": 3 * 3600,    # 3 jam
 }
 
 BLOK_JAM_RINGKASAN = 3        # ringkasan AI dibuat ulang maksimal sekali per blok ini

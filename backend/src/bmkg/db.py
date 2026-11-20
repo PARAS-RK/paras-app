@@ -7,6 +7,8 @@ from .waktu import BASI
 
 sb = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
+TOTAL_DITULIS = 0  # jumlah baris yang berhasil ditulis selama run ini (dibaca run.py)
+
 
 def muat_area():
     """Kelurahan unik yang dipakai user."""
@@ -52,8 +54,10 @@ def baris_cache(tipe, kode, status, payload, ringkasan, issued=None):
 
 
 def tulis(baris):
+    global TOTAL_DITULIS
     for i in range(0, len(baris), 200):
         sb.table("bmkg_cache").upsert(baris[i:i + 200], on_conflict="data_type,area_code").execute()
+    TOTAL_DITULIS += len(baris)
     print(f"  {len(baris)} baris ditulis")
 
 

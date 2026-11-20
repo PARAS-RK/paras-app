@@ -87,7 +87,10 @@ function Sidebar({ mobile = false, pathname, onNavigate, onClose }) {
 
         <form action="/auth/signout" method="post">
           <input type="hidden" name="next" value="/admin/login" />
-          <button type="submit" className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-red-950 hover:text-red-400">
+          <button
+            type="submit"
+            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-red-950 hover:text-red-400"
+          >
             <LogOut className="h-4 w-4" /> Keluar
           </button>
         </form>
