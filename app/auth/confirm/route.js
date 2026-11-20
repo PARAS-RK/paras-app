@@ -16,7 +16,7 @@ export async function GET(request) {
   }
 
   // Gunakan domain dari environment variable
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || request.nextUrl.origin;
+  const siteUrl = process.env.SITE_URL || request.nextUrl.origin;
 
   if (tokenHash && ALLOWED_TYPES.includes(type)) {
     const supabase = await createClient();
