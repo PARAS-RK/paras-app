@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Mail, Lock, Phone, Loader2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { createClient } from '../../lib/supabase/client';
+import { loginWithEmail, loginWithPhone } from './actions';
 import logo from '@/public/logo.svg';
 
 export default function Login() {
@@ -18,7 +19,6 @@ export default function Login() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [authError, setAuthError] = useState('');
 
-  // Pesan bila akun Google belum terdaftar
   useEffect(() => {
     const err = new URLSearchParams(window.location.search).get('error');
     if (err === 'google_not_registered') {
@@ -26,7 +26,6 @@ export default function Login() {
     }
   }, []);
 
-  // Fungsi Login dengan Google OAuth Supabase
   const handleGoogleLogin = async () => {
     try {
       setGoogleLoading(true);
@@ -65,30 +64,15 @@ export default function Login() {
     setAuthError('');
 
     try {
-      if (method === 'phone') {
-        // Nomor HP dicocokkan ke email di server, lalu sesi dibuat di server
-        const res = await fetch('/auth/phone-login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone: form.identifier, password: form.password }),
-        });
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(json.error || 'Nomor HP atau kata sandi salah.');
-      } else {
-        const supabase = createClient();
-        const { error } = await supabase.auth.signInWithPassword({
-          email: form.identifier.trim(),
-          password: form.password,
-        });
-        if (error) throw error;
-      }
+      const result = method === 'phone' ? await loginWithPhone({ phone: form.identifier, password: form.password }) : await loginWithEmail({ email: form.identifier, password: form.password });
+
+      if (result?.error) throw new Error(result.error);
 
       localStorage.setItem('paras-authenticated', 'true');
       router.push('/home');
       router.refresh();
     } catch (err) {
-      const msg = String(err.message || '');
-      setAuthError(/invalid login credentials/i.test(msg) ? 'Email atau kata sandi salah.' : msg || 'Email atau kata sandi salah.');
+      setAuthError(err.message || 'Gagal masuk. Coba lagi.');
     } finally {
       setLoading(false);
     }
