@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Mail, Lock, Phone, Loader2 } from 'lucide-react';
@@ -18,6 +18,14 @@ export default function Login() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [authError, setAuthError] = useState('');
 
+  // Pesan bila akun Google belum terdaftar
+  useEffect(() => {
+    const err = new URLSearchParams(window.location.search).get('error');
+    if (err === 'google_not_registered') {
+      setAuthError('Akun Google ini belum terdaftar. Silakan daftar dengan email terlebih dahulu.');
+    }
+  }, []);
+
   // Fungsi Login dengan Google OAuth Supabase
   const handleGoogleLogin = async () => {
     try {
@@ -28,8 +36,7 @@ export default function Login() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          // Arahkan kembali ke halaman home / dashboard setelah sukses login google
-          redirectTo: `${window.location.origin}/home`,
+          redirectTo: `${window.location.origin}/auth/callback?next=/home`,
         },
       });
 
@@ -58,20 +65,30 @@ export default function Login() {
     setAuthError('');
 
     try {
-      const supabase = createClient();
-
-      // Proses login menggunakan Email / Password Supabase Auth
-      const { error } = await supabase.auth.signInWithPassword({
-        email: form.identifier,
-        password: form.password,
-      });
-
-      if (error) throw error;
+      if (method === 'phone') {
+        // Nomor HP dicocokkan ke email di server, lalu sesi dibuat di server
+        const res = await fetch('/auth/phone-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: form.identifier, password: form.password }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json.error || 'Nomor HP atau kata sandi salah.');
+      } else {
+        const supabase = createClient();
+        const { error } = await supabase.auth.signInWithPassword({
+          email: form.identifier.trim(),
+          password: form.password,
+        });
+        if (error) throw error;
+      }
 
       localStorage.setItem('paras-authenticated', 'true');
       router.push('/home');
+      router.refresh();
     } catch (err) {
-      setAuthError(err.message || 'Email atau kata sandi salah.');
+      const msg = String(err.message || '');
+      setAuthError(/invalid login credentials/i.test(msg) ? 'Email atau kata sandi salah.' : msg || 'Email atau kata sandi salah.');
     } finally {
       setLoading(false);
     }
