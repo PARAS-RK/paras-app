@@ -76,8 +76,7 @@ export default function EditProfileModal({ isOpen, onClose, currentProfile, onSu
         uploadedAvatarUrl = publicUrlData.publicUrl;
       }
 
-      // 2. UPDATE tabel profiles. Wilayah (region_id) sengaja tidak ikut diubah:
-      //    wilayah mengikuti unit PKK dan hanya bisa diubah oleh admin.
+      // 2. UPDATE tabel profiles tetapi wilayah mengikuti unit PKK dan hanya bisa diubah oleh admin.
       const updatePayload = {
         phone_number: phoneNumber,
         avatar_url: uploadedAvatarUrl,
@@ -95,8 +94,11 @@ export default function EditProfileModal({ isOpen, onClose, currentProfile, onSu
       //email baru baru berlaku setelah dikonfirmasi.
       let emailPending = false;
       if (email && email !== currentProfile?.email) {
-        const { error: emailError } = await supabase.auth.updateUser({ email });
-        if (emailError) throw emailError;
+        const { error: emailError } = await supabase.auth.updateUser({ email: email.trim() }, { emailRedirectTo: `${window.location.origin}/auth/callback?next=/profile` });
+        if (emailError) {
+          const taken = /already|registered|exists/i.test(emailError.message || '');
+          throw new Error(taken ? 'Email ini sudah dipakai akun lain.' : emailError.message);
+        }
         emailPending = true;
       }
 
@@ -133,7 +135,7 @@ export default function EditProfileModal({ isOpen, onClose, currentProfile, onSu
       .toUpperCase();
   };
 
-  // Wilayah hanya ditampilkan (dari database), tidak bisa diubah di sini
+  // Wilayah tidak bisa diubah
   const regionFields = [
     ['Provinsi', currentProfile?.province],
     ['Kota/Kabupaten', currentProfile?.city],
@@ -199,6 +201,9 @@ export default function EditProfileModal({ isOpen, onClose, currentProfile, onSu
                 required
                 className="w-full rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm outline-none focus:border-brand focus:bg-white"
               />
+              <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                Mengganti email memerlukan konfirmasi dari <b>email lama</b> dan <b>email baru</b>. Perubahan baru berlaku setelah kedua tautan diklik.
+              </p>
             </div>
 
             <div>
@@ -255,7 +260,7 @@ export default function EditProfileModal({ isOpen, onClose, currentProfile, onSu
         open={!!emailNotice}
         type="success"
         title="Cek email Anda"
-        message={`Kami mengirim tautan konfirmasi ke ${emailNotice}. Email baru berlaku setelah Anda mengonfirmasinya.`}
+        message={`Demi keamanan, kami mengirim tautan konfirmasi ke dua alamat: email lama (${currentProfile?.email || 'email Anda saat ini'}) dan email baru (${emailNotice}). Buka kedua kotak masuk (cek juga folder Spam) lalu klik kedua tautannya. Email baru baru berlaku setelah keduanya dikonfirmasi; sampai saat itu Anda tetap masuk dengan email lama.`}
         buttonLabel="Mengerti"
         onClose={() => {
           setEmailNotice('');
