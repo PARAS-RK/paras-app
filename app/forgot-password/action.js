@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { headers } from 'next/headers';
 
 export async function requestPasswordReset(email) {
   if (!email || typeof email !== 'string') {
@@ -10,7 +11,8 @@ export async function requestPasswordReset(email) {
     };
   }
 
-  const siteUrl = process.env.SITE_URL;
+  const h = await headers();
+  const siteUrl = process.env.SITE_URL || h.get('origin') || process.env.NEXT_PUBLIC_SITE_URL;
 
   if (!siteUrl) {
     console.error('SITE_URL belum dikonfigurasi');
