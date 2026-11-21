@@ -310,7 +310,6 @@ function AksiListContent() {
   };
 
   const chips = [
-    { Icon: Flame, color: 'text-[#F97316]', label: `${userStats.streak} minggu beruntun` },
     { Icon: Leaf, color: 'text-[#159038]', label: `${userStats.points} Poin` },
     { Icon: CheckCircle2, color: 'text-[#0F6B2A]', label: `${userStats.completed} Aksi selesai` },
   ];
