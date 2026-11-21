@@ -76,6 +76,7 @@ export default function Navbar() {
   return (
     <Suspense fallback={<div className="h-16 w-full bg-white border-b border-gray-100" />}>
       <NavbarContent />
+      <BottomNav />
     </Suspense>
   );
 }
