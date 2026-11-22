@@ -120,4 +120,3 @@ Dikembangkan oleh tim **PARAS** sebagai bagian dari program **Perempuan Inovasi 
 
 Proyek ini dikembangkan untuk tujuan edukasi, inovasi sosial, dan pemberdayaan komunitas tanggap bencana.
 
-```
